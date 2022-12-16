@@ -1,0 +1,56 @@
+# Default values for lambda-link.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+image:
+  repository: 332273710158.dkr.ecr.us-east-2.amazonaws.com/node-latency-for-k8s
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: 34431ae-dirty
+  digest: sha256:9c53b36f48d1e0bfc2b282ffbab95a2073497f71fd8c397fb6d55f4a67114276
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+podMonitor:
+  create: false
+
+podAnnotations: {}
+
+podSecurityContext:
+  fsGroup: 0
+  runAsUser: 0
+  runAsGroup: 0
+
+securityContext:
+  capabilities: {}
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  limits:
+    memory: 256Mi
+
+nodeSelector:
+  kubernetes.io/arch: amd64
+  kubernetes.io/os: linux
+tolerations: []
+affinity: {}
+
+env:
+  - name: PROMETHEUS_METRICS
+    value: "true"
+  - name: CLOUDWATCH_METRICS
+    value: "true"
+  - name: OUTPUT
+    value: "markdown"
