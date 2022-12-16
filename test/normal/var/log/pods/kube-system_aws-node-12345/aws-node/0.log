@@ -1,0 +1,9 @@
+2022-11-28T02:59:19.828544665Z stdout F {"level":"info","ts":"2022-11-28T02:59:19.826Z","caller":"entrypoint.sh","msg":"Validating env variables ..."}
+2022-11-28T02:59:19.829138306Z stdout F {"level":"info","ts":"2022-11-28T02:59:19.828Z","caller":"entrypoint.sh","msg":"Install CNI binaries.."}
+2022-11-28T02:59:19.943131498Z stdout F {"level":"info","ts":"2022-11-28T02:59:19.942Z","caller":"entrypoint.sh","msg":"Starting IPAM daemon in the background ... "}
+2022-11-28T02:59:19.943743458Z stdout F {"level":"info","ts":"2022-11-28T02:59:19.943Z","caller":"entrypoint.sh","msg":"Checking for IPAM connectivity ... "}
+2022-11-28T02:59:21.06250871Z stdout F {"level":"info","ts":"2022-11-28T02:59:21.062Z","caller":"entrypoint.sh","msg":"Retrying waiting for IPAM-D"}
+2022-11-28T02:59:22.065544294Z stdout F {"level":"info","ts":"2022-11-28T02:59:22.065Z","caller":"entrypoint.sh","msg":"Retrying waiting for IPAM-D"}
+2022-11-28T02:59:22.084379453Z stdout F {"level":"info","ts":"2022-11-28T02:59:22.084Z","caller":"entrypoint.sh","msg":"Copying config file ... "}
+2022-11-28T02:59:22.101379451Z stdout F {"level":"info","ts":"2022-11-28T02:59:22.101Z","caller":"entrypoint.sh","msg":"Successfully copied CNI plugin binary and config file."}
+2022-11-28T02:59:22.102007681Z stdout F {"level":"info","ts":"2022-11-28T02:59:22.101Z","caller":"entrypoint.sh","msg":"Foregrounding IPAM daemon ..."}
