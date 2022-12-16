@@ -1,0 +1,24 @@
+{{ template "chart.header" . }}
+{{ template "chart.description" . }}
+
+{{ template "chart.versionBadge" . }}{{ template "chart.typeBadge" . }}{{ template "chart.appVersionBadge" . }}
+
+## Documentation
+
+For full node-latency-for-k8s documentation please checkout [https://github.com/awslabs/node-latency-for-k8s](https://github.com/awslabs/node-latency-for-k8s).
+
+## Installing the Chart
+
+```bash
+helm upgrade --install --namespace node-latency-for-k8s --create-namespace \
+  node-latency-for-k8s oci://public.ecr.aws/eks-nodes/{{ template "chart.name" . }} \
+  --version v{{ template "chart.version" . }} \
+  --set serviceAccount.annotations.eks\.amazonaws\.com/role-arn=${NLK_IAM_ROLE_ARN} \
+  --wait
+```
+
+{{ template "chart.requirementsSection" . }}
+
+{{ template "chart.valuesSection" . }}
+
+{{ template "helm-docs.versionFooter" . }}

@@ -1,0 +1,44 @@
+before:
+  hooks:
+    - go mod tidy
+builds:
+  - main: ./cmd/node-latency-for-k8s/main.go
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -X main.commit={{.FullCommit}}
+      - -X main.version={{.Version}}
+    targets:
+      - linux_amd64
+      - linux_arm64
+      - darwin_arm64
+      - darwin_amd64
+checksum:
+  name_template: 'checksums.txt'
+snapshot:
+  name_template: "{{ incpatch .Version }}-snapshot"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+nfpms:
+  - maintainer: Brandon Wagner
+    description: |-
+      a k8s node latency timing and metrics tool
+    license: Apache-2.0
+    formats:
+      - deb
+      - rpm
+# ko:
+#   repository: public.ecr.aws/eks-compute/node-latency-for-k8s
+#   tags:
+#     - {{.Version}}
+#   ldflags:
+#     - -X main.commit={{.FullCommit}}
+#     - -X main.version={{.Version}}
+#   platforms:
+#     - linux/amd64
+#     - linux/arm64
+#   bare: true

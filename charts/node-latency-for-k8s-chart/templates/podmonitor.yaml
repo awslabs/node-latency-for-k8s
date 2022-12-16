@@ -1,0 +1,18 @@
+{{- if .Values.podMonitor.create -}}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "node-latency-for-k8s.fullname" . }}
+  labels:
+    {{- include "node-latency-for-k8s.labels" . | nindent 4 }}
+spec:
+  podMetricsEndpoints:
+    - honorLabels: true
+      interval: 15s
+      path: /metrics
+      targetPort: 2112
+      scheme: http
+  selector:
+    matchLabels:
+      {{- include "node-latency-for-k8s.selectorLabels" . | nindent 6 }}
+{{- end }}
