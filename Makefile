@@ -25,8 +25,10 @@ publish: verify build ## Build and publish container images and helm chart
 	sed "s|repository:.*|repository: $(KO_DOCKER_REPO)/node-latency-for-k8s|" charts/node-latency-for-k8s-chart/values.yaml > ${BUILD_DIR_PATH}/values-1.yaml
 	sed "s|tag:.*|tag: ${CONTROLLER_TAG}|" ${BUILD_DIR_PATH}/values-1.yaml > ${BUILD_DIR_PATH}/values-2.yaml
 	sed "s|digest:.*|digest: ${CONTROLLER_DIGEST}|" ${BUILD_DIR_PATH}/values-2.yaml > charts/node-latency-for-k8s-chart/values.yaml
+	sed "s|version:.*|version: $(shell echo ${CONTROLLER_TAG} | tr -d 'v')|" charts/node-latency-for-k8s-chart/Chart.yaml > ${BUILD_DIR_PATH}/Chart.yaml
+	sed "s|appVersion:.*|appVersion: $(shell echo ${CONTROLLER_TAG} | tr -d 'v')|" ${BUILD_DIR_PATH}/Chart.yaml > charts/node-latency-for-k8s-chart/Chart.yaml
 	helm package charts/node-latency-for-k8s-chart -d ${BUILD_DIR_PATH} --version "v0-${VERSION}"
-	helm push ${BUILD_DIR_PATH}/node-latency-for-k8s-chart-v0-${VERSION}.tgz "oci://${KO_DOCKER_REPO}" --debug
+	helm push ${BUILD_DIR_PATH}/node-latency-for-k8s-chart-v0-${VERSION}.tgz "oci://${KO_DOCKER_REPO}"
 
 install:  ## Deploy the latest released version into your ~/.kube/config cluster
 	@echo Upgrading to $(shell grep version charts/node-latency-for-k8s-chart/Chart.yaml)
