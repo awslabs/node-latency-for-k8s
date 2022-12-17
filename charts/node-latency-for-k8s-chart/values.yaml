@@ -3,11 +3,11 @@
 # Declare variables to be passed into your templates.
 
 image:
-  repository: 332273710158.dkr.ecr.us-east-2.amazonaws.com/node-latency-for-k8s
+  repository: public.ecr.aws/m0e9w1v1/node-latency-for-k8s
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: 34431ae-dirty
-  digest: sha256:9c53b36f48d1e0bfc2b282ffbab95a2073497f71fd8c397fb6d55f4a67114276
+  tag: v0.0.1
+  digest: sha256:5e14248555e8be72ec1353ae1420d6f0318a2431560e914b5012884f403db042
 
 nameOverride: ""
 fullnameOverride: ""
