@@ -6,8 +6,8 @@ image:
   repository: public.ecr.aws/g4k0u1s2/node-latency-for-k8s
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: v0.1.0
-  digest: sha256:4b3511d9eac8f8f8339af9d555cf8f743965a3d65a0da9db309f984e3a277a6a
+  tag: v0.1.1
+  digest: sha256:a7ecd3efe4090c8fd816df58aa1fa18746b43e535b59e36bfac6103ede89516d
 
 nameOverride: ""
 fullnameOverride: ""
