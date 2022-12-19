@@ -1,3 +1,17 @@
+/*
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 // Package latency provides a convenient abstraction around timing the startup and bootstrap of a Kubernetes node.
 // latency provides an extensibility mechanism to register custom sources and events, but also ships with a set of default sources and events.
 package latency
@@ -16,14 +30,15 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
-	"github.com/awslabs/node-latency-for-k8s/pkg/sources"
-	"github.com/awslabs/node-latency-for-k8s/pkg/sources/awsnode"
-	imdssrc "github.com/awslabs/node-latency-for-k8s/pkg/sources/imds"
-	"github.com/awslabs/node-latency-for-k8s/pkg/sources/messages"
 	"github.com/olekukonko/tablewriter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/samber/lo"
 	"go.uber.org/multierr"
+
+	"github.com/awslabs/node-latency-for-k8s/pkg/sources"
+	"github.com/awslabs/node-latency-for-k8s/pkg/sources/awsnode"
+	imdssrc "github.com/awslabs/node-latency-for-k8s/pkg/sources/imds"
+	"github.com/awslabs/node-latency-for-k8s/pkg/sources/messages"
 )
 
 // Measurer holds registered sources and events to use for timing runs
@@ -167,13 +182,13 @@ func (m *Measurer) Measure(ctx context.Context) *Measurement {
 }
 
 // MeasureUntil executes timing runs with the registered sources and events until all terminal events have timings or the timeout is reached
-func (l *Measurer) MeasureUntil(ctx context.Context, timeout time.Duration, retryDelay time.Duration) *Measurement {
+func (m *Measurer) MeasureUntil(ctx context.Context, timeout time.Duration, retryDelay time.Duration) *Measurement {
 	startTime := time.Now().UTC()
 	anyErr := true
 	var measurement *Measurement
 	for anyErr && time.Since(startTime) < timeout {
 		anyErr = false
-		measurement = l.Measure(ctx)
+		measurement = m.Measure(ctx)
 		for _, m := range measurement.Timings {
 			if m.Error != nil {
 				anyErr = true
@@ -197,7 +212,7 @@ func (l *Measurer) MeasureUntil(ctx context.Context, timeout time.Duration, retr
 		if done {
 			return measurement
 		} else if anyErr {
-			for _, s := range l.sources {
+			for _, s := range m.sources {
 				s.ClearCache()
 			}
 			time.Sleep(retryDelay)
@@ -218,7 +233,7 @@ func (m *Measurer) getMetadata(ctx context.Context) (*Metadata, error) {
 	}
 	idDoc, err := m.imdsClient.GetInstanceIdentityDocument(ctx, &imds.GetInstanceIdentityDocumentInput{})
 	if err != nil {
-		return nil, fmt.Errorf("unable to retrieve instance-identity document: %v", err)
+		return nil, fmt.Errorf("unable to retrieve instance-identity document: %w", err)
 	}
 	return &Metadata{
 		Region:           idDoc.Region,

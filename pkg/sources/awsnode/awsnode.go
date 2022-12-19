@@ -1,3 +1,17 @@
+/*
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 // Package awsnode is a latency timing source for the VPC CNI logs (aka aws-node DaemonSet)
 package awsnode
 
@@ -15,14 +29,14 @@ var (
 	TimestampLayout = "2006-01-02T15:04:05.999999999Z"
 )
 
-// AWSNodeSource is the aws-node / VPC CNI log source
-type AWSNodeSource struct {
+// Source is the aws-node / VPC CNI log source
+type Source struct {
 	logReader *sources.LogReader
 }
 
 // New instantiates a new instance of the AWSNode source
-func New(path string) *AWSNodeSource {
-	return &AWSNodeSource{
+func New(path string) *Source {
+	return &Source{
 		logReader: &sources.LogReader{
 			Path:            path,
 			Glob:            true,
@@ -33,12 +47,12 @@ func New(path string) *AWSNodeSource {
 }
 
 // ClearCache will clear the log reader cache
-func (a AWSNodeSource) ClearCache() {
+func (a Source) ClearCache() {
 	a.logReader.ClearCache()
 }
 
 // Find searches the aws-node log source based on the regexp string provided
-func (a AWSNodeSource) Find(search string, firstOccurrence bool) (time.Time, error) {
+func (a Source) Find(search string, firstOccurrence bool) (time.Time, error) {
 	re, err := regexp.Compile(search)
 	if err != nil {
 		return time.Time{}, err
@@ -46,11 +60,11 @@ func (a AWSNodeSource) Find(search string, firstOccurrence bool) (time.Time, err
 	return a.logReader.Find(re, firstOccurrence)
 }
 
-func (a AWSNodeSource) String() string {
+func (a Source) String() string {
 	return a.logReader.Path
 }
 
 // Name is the log source name
-func (a AWSNodeSource) Name() string {
+func (a Source) Name() string {
 	return Name
 }

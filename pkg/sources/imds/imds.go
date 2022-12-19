@@ -1,3 +1,17 @@
+/*
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 // Package imds is a latency timing source for the EC2 Instance Metadata Service (IMDS)
 package imds
 
@@ -16,8 +30,8 @@ var (
 	PendingTime      = fmt.Sprintf("%s/%s", DynamicDocPrefix, "pendingTime")
 )
 
-// IMDSSource is the EC2 Instance Metadata Service (IMDS) http source
-type IMDSSource struct {
+// Source is the EC2 Instance Metadata Service (IMDS) http source
+type Source struct {
 	imds *imds.Client
 }
 
@@ -28,18 +42,18 @@ func (e ErrMetadata) Error() string {
 }
 
 // New instantiates a new instance of the IMDS source
-func New(imdsClient *imds.Client) *IMDSSource {
-	return &IMDSSource{
+func New(imdsClient *imds.Client) *Source {
+	return &Source{
 		imds: imdsClient,
 	}
 }
 
 // ClearCache is a noop for the IMDS Source since it is an http source, not a log file
-func (i IMDSSource) ClearCache() {}
+func (i Source) ClearCache() {}
 
 // Find queries the EC2 Instance Metadata Service (IMDS) for the search path and expects to find a time.
 // The only supported paths currently are "/dynamic/instance-identity/document/pendingTime" and "/dynamic/instance-identity/document/requestedTime"
-func (i IMDSSource) Find(search string, firstOccurrence bool) (time.Time, error) {
+func (i Source) Find(search string, firstOccurrence bool) (time.Time, error) {
 	ctx := context.TODO()
 	identityDoc, err := i.imds.GetInstanceIdentityDocument(ctx, &imds.GetInstanceIdentityDocumentInput{})
 	if err != nil {
@@ -59,11 +73,11 @@ func (i IMDSSource) Find(search string, firstOccurrence bool) (time.Time, error)
 	return time.Time{}, fmt.Errorf("metadata for path \"%s\" is not available", search)
 }
 
-func (i IMDSSource) String() string {
+func (i Source) String() string {
 	return Name
 }
 
 // Name is the name of the source
-func (i IMDSSource) Name() string {
+func (i Source) Name() string {
 	return Name
 }

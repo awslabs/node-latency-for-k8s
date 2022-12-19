@@ -1,3 +1,17 @@
+/*
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package main
 
 import (
@@ -17,10 +31,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
-	"github.com/awslabs/node-latency-for-k8s/pkg/latency"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/samber/lo"
+
+	"github.com/awslabs/node-latency-for-k8s/pkg/latency"
 )
 
 var (
@@ -110,9 +125,14 @@ func main() {
 			promhttp.HandlerOpts{EnableOpenMetrics: false},
 		))
 		log.Printf("Serving Prometheus metrics on :%d", options.MetricsPort)
-		if err := http.ListenAndServe(fmt.Sprintf(":%d", options.MetricsPort), nil); err != nil {
-			log.Fatalln(err)
+		srv := &http.Server{
+			ReadTimeout:       1 * time.Second,
+			WriteTimeout:      1 * time.Second,
+			IdleTimeout:       30 * time.Second,
+			ReadHeaderTimeout: 2 * time.Second,
+			Addr:              fmt.Sprintf(":%d", options.MetricsPort),
 		}
+		lo.Must0(srv.ListenAndServe())
 	}
 }
 
