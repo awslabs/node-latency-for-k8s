@@ -40,7 +40,7 @@ Usage for node-latency-for-k8s:
 
 **The below installation works if you do not need CloudWatch metrics**
 ```
-export VERSION="v0.1.4"
+export VERSION="v0.1.5"
 
 docker logout public.ecr.aws
 helm update --install node-latency-for-k8s oci://public.ecr.aws/g4k0u1s2/node-latency-for-k8s-chart \
@@ -53,7 +53,7 @@ helm update --install node-latency-for-k8s oci://public.ecr.aws/g4k0u1s2/node-la
 **If you do need CloudWatch metrics, then give the DS an IAM Role**
 ```
 export CLUSTER_NAME=<Fill in CLUSTER_NAME here>
-export VERSION="v0.1.4"
+export VERSION="v0.1.5"
 
 export AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 export KNL_IAM_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/node-latency-for-k8s-${CLUSTER_NAME}"
@@ -74,15 +74,15 @@ Debian / Ubuntu:
 
 ```
 [[ `uname -m` == "aarch64" ]] && ARCH="arm64" || ARCH="amd64"
-wget https://github.com/awslabs/node-latency-for-k8s/releases/download/v0.1.4/node-latency-for-k8s_0.1.4_linux_${ARCH}.deb
-dpkg --install node-latency-for-k8s_0.1.4_linux_${ARCH}.deb
+wget https://github.com/awslabs/node-latency-for-k8s/releases/download/v0.1.5/node-latency-for-k8s_0.1.5_linux_${ARCH}.deb
+dpkg --install node-latency-for-k8s_0.1.5_linux_${ARCH}.deb
 ```
 
 RedHat:
 
 ```
 [[ `uname -m` == "aarch64" ]] && ARCH="arm64" || ARCH="amd64"
-rpm -i https://github.com/awslabs/node-latency-for-k8s/releases/download/v0.1.4/node-latency-for-k8s_0.1.4_linux_${ARCH}.rpm
+rpm -i https://github.com/awslabs/node-latency-for-k8s/releases/download/v0.1.5/node-latency-for-k8s_0.1.5_linux_${ARCH}.rpm
 ```
 
 Download Binary Directly:
@@ -90,7 +90,7 @@ Download Binary Directly:
 ```
 [[ `uname -m` == "aarch64" ]] && ARCH="arm64" || ARCH="amd64"
 OS=`uname | tr '[:upper:]' '[:lower:]'`
-wget -qO- https://github.com/awslabs/node-latency-for-k8s/releases/download/v0.1.4/node-latency-for-k8s_0.1.4_${OS}_${ARCH}.tar.gz | tar xvz
+wget -qO- https://github.com/awslabs/node-latency-for-k8s/releases/download/v0.1.5/node-latency-for-k8s_0.1.5_${OS}_${ARCH}.tar.gz | tar xvz
 chmod +x node-latency-for-k8s
 ```
 
