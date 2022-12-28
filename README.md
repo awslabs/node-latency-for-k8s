@@ -43,7 +43,7 @@ Usage for node-latency-for-k8s:
 export VERSION="v0.1.1"
 
 docker logout public.ecr.aws
-helm update --install node-latency-for-k8s oci://public.ecr.aws/g4k0u1s2/node-latency-for-k8s-chart \
+helm update --install node-latency-for-k8s oci://public.ecr.aws/g4k0.1.3/node-latency-for-k8s-chart \
    --version ${VERSION} \
    --namespace node-latency-for-k8s \
    --wait
@@ -59,7 +59,7 @@ export AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output te
 export KNL_IAM_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/node-latency-for-k8s-${CLUSTER_NAME}"
 
 docker logout public.ecr.aws
-helm upgrade --install node-latency-for-k8s oci://public.ecr.aws/g4k0u1s2/node-latency-for-k8s-chart \
+helm upgrade --install node-latency-for-k8s oci://public.ecr.aws/g4k0.1.3/node-latency-for-k8s-chart \
    --version ${VERSION} \
    --namespace node-latency-for-k8s \
    --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=${KNL_IAM_ROLE_ARN} \
