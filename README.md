@@ -43,7 +43,7 @@ Usage for node-latency-for-k8s:
 export VERSION="v0.1.5"
 
 docker logout public.ecr.aws
-helm update --install node-latency-for-k8s oci://public.ecr.aws/g4k0u1s2/node-latency-for-k8s-chart \
+helm upgrade --install node-latency-for-k8s oci://public.ecr.aws/g4k0u1s2/node-latency-for-k8s-chart \
    --version ${VERSION} \
    --namespace node-latency-for-k8s \
    --wait
@@ -52,11 +52,13 @@ helm update --install node-latency-for-k8s oci://public.ecr.aws/g4k0u1s2/node-la
 
 **If you do need CloudWatch metrics, then give the DS an IAM Role**
 ```
+git clone https://github.com/awslabs/node-latency-for-k8s.git
+cd scripts/ && ./01-create-iam-policy.sh && ./02-create-service-account.sh
 export CLUSTER_NAME=<Fill in CLUSTER_NAME here>
 export VERSION="v0.1.5"
 
 export AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
-export KNL_IAM_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/node-latency-for-k8s-${CLUSTER_NAME}"
+export KNL_IAM_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/${CLUSTER_NAME}-node-latency-for-k8s"
 
 docker logout public.ecr.aws
 helm upgrade --install node-latency-for-k8s oci://public.ecr.aws/g4k0u1s2/node-latency-for-k8s-chart \
