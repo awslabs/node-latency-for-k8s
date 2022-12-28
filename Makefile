@@ -28,8 +28,8 @@ publish: verify build ## Build and publish container images and helm chart
 	sed -i.bak "s|digest:.*|digest: ${CONTROLLER_DIGEST}|" charts/node-latency-for-k8s-chart/values.yaml
 	sed -i.bak "s|version:.*|version: $(shell echo ${CONTROLLER_TAG} | tr -d 'v')|" charts/node-latency-for-k8s-chart/Chart.yaml
 	sed -i.bak "s|appVersion:.*|appVersion: $(shell echo ${CONTROLLER_TAG} | tr -d 'v')|" charts/node-latency-for-k8s-chart/Chart.yaml
-	sed -i.bak "s|$(shell echo ${PREV_VERSION} | tr -d 'v')([\"_/])|$(shell echo ${VERSION} | tr -d 'v')\1|g" README.md
-	rm -f *.bak
+	sed -E -i.bak "s|$(shell echo ${PREV_VERSION} | tr -d 'v')([\"_/])|$(shell echo ${VERSION} | tr -d 'v')\1|g" README.md
+	rm -f *.bak charts/node-latency-for-k8s-chart/*.bak
 	helm package charts/node-latency-for-k8s-chart -d ${BUILD_DIR_PATH} --version "${VERSION}"
 	helm push ${BUILD_DIR_PATH}/node-latency-for-k8s-chart-${VERSION}.tgz "oci://${KO_DOCKER_REPO}"
 
