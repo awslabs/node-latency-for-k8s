@@ -18,9 +18,11 @@ package imds
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
+	"github.com/awslabs/node-latency-for-k8s/pkg/sources"
 )
 
 var (
@@ -51,28 +53,7 @@ func New(imdsClient *imds.Client) *Source {
 // ClearCache is a noop for the IMDS Source since it is an http source, not a log file
 func (i Source) ClearCache() {}
 
-// Find queries the EC2 Instance Metadata Service (IMDS) for the search path and expects to find a time.
-// The only supported paths currently are "/dynamic/instance-identity/document/pendingTime" and "/dynamic/instance-identity/document/requestedTime"
-func (i Source) Find(search string, firstOccurrence bool) (time.Time, error) {
-	ctx := context.TODO()
-	identityDoc, err := i.imds.GetInstanceIdentityDocument(ctx, &imds.GetInstanceIdentityDocumentInput{})
-	if err != nil {
-		return time.Time{}, fmt.Errorf("unable to retrieve instance-identity document: %v %w", err, ErrMetadata{})
-	}
-	if err != nil {
-		return time.Time{}, err
-	}
-	switch search {
-	case PendingTime:
-		return identityDoc.PendingTime, nil
-	case RequestedTime:
-		// requestedTime doesn't actually exist, but this is approximately right that EC2 takes about 1 second
-		// to handle the API request for an instances before it goes pending.
-		return identityDoc.PendingTime.Add(-1 * time.Second), nil
-	}
-	return time.Time{}, fmt.Errorf("metadata for path \"%s\" is not available", search)
-}
-
+// String is a human readable string of the source
 func (i Source) String() string {
 	return Name
 }
@@ -80,4 +61,56 @@ func (i Source) String() string {
 // Name is the name of the source
 func (i Source) Name() string {
 	return Name
+}
+
+// FindByRegex is a helper func that returns a FindFunc to query IMDS for a specific HTTP path that can be used in an Event
+func (i Source) FindByPath(path string) sources.FindFunc {
+	return func(s sources.Source, log []byte) ([]string, error) {
+		result, err := i.GetMetadata(path)
+		return []string{result}, err
+	}
+}
+
+// Find will use the Event's FindFunc and CommentFunc to search the source and return the result
+func (i Source) Find(event *sources.Event) ([]sources.FindResult, error) {
+	timestamps, err := event.FindFn(i, nil)
+	if err != nil {
+		return nil, err
+	}
+	var results []sources.FindResult
+	for _, tsStr := range timestamps {
+		tsMicros, err := strconv.ParseInt(tsStr, 10, 64)
+		comment := ""
+		if event.CommentFn != nil {
+			comment = event.CommentFn(tsStr)
+		}
+		results = append(results, sources.FindResult{
+			Line:      tsStr,
+			Timestamp: time.UnixMicro(tsMicros),
+			Comment:   comment,
+			Err:       err,
+		})
+	}
+	return results, nil
+}
+
+// GetMetadata queries EC2 IMDS
+func (i Source) GetMetadata(path string) (string, error) {
+	ctx := context.TODO()
+	identityDoc, err := i.imds.GetInstanceIdentityDocument(ctx, &imds.GetInstanceIdentityDocumentInput{})
+	if err != nil {
+		return "", fmt.Errorf("unable to retrieve instance-identity document: %v %w", err, ErrMetadata{})
+	}
+	if err != nil {
+		return "", err
+	}
+	switch path {
+	case PendingTime:
+		return strconv.FormatInt(identityDoc.PendingTime.UnixMicro(), 10), nil
+	case RequestedTime:
+		// requestedTime doesn't actually exist, but this is approximately right that EC2 takes about 1 second
+		// to handle the API request for an instance before it goes pending.
+		return strconv.FormatInt(identityDoc.PendingTime.Add(-1*time.Second).UnixMicro(), 10), nil
+	}
+	return "", fmt.Errorf("metadata for path \"%s\" is not available", path)
 }

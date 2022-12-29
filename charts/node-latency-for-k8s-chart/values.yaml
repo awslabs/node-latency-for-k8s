@@ -54,3 +54,5 @@ env:
     value: "true"
   - name: OUTPUT
     value: "markdown"
+  - name: NO_COMMENTS
+    value: "false"

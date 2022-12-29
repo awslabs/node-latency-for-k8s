@@ -24,6 +24,7 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -44,7 +45,7 @@ import (
 // Measurer holds registered sources and events to use for timing runs
 type Measurer struct {
 	sources    map[string]sources.Source
-	events     []*Event
+	events     []*sources.Event
 	metadata   *Metadata
 	imdsClient *imds.Client
 }
@@ -69,23 +70,27 @@ type Metadata struct {
 
 // Timing is a specific instance of an Event timing
 type Timing struct {
-	Event     *Event        `json:"event"`
-	Timestamp time.Time     `json:"timestamp"`
-	T         time.Duration `json:"seconds"`
-	Error     error         `json:"error"`
+	Event     *sources.Event `json:"event"`
+	Timestamp time.Time      `json:"timestamp"`
+	T         time.Duration  `json:"seconds"`
+	Comment   string         `json:"comment"`
+	Error     error          `json:"error"`
 }
 
-// Event defines what is being timed from a specific source
-type Event struct {
-	Name            string `json:"name"`
-	Metric          string `json:"metric"`
-	Search          string `json:"search"`
-	FirstOccurrence bool   `json:"firstOccurrence"`
-	Terminal        bool   `json:"terminal"`
-	Src             string `json:"src"`
-	src             sources.Source
+// ChartOptions allows configuration of the markdown chart
+type ChartOptions struct {
+	HiddenColumns []string
 }
 
+// Chart column label consts
+const (
+	ChartColumnEvent     = "Event"
+	ChartColumnTimestamp = "Timestamp"
+	ChartColumnT         = "T"
+	ChartColumnComment   = "Comment"
+)
+
+// Default Event regular expressions
 var (
 	vmInit                = regexp.MustCompile(`.*kernel: Linux version.*`)
 	networkStart          = regexp.MustCompile(`.*Reached target Network \(Pre\).*`)
@@ -105,6 +110,7 @@ var (
 	vpcCNIInitialized     = regexp.MustCompile(`.*Successfully copied CNI plugin binary and config file.*`)
 	nodeReady             = regexp.MustCompile(`.*event="NodeReady".*`)
 	podReady              = regexp.MustCompile(`.*default/.* Type:ContainerStarted.*`)
+	throttled             = regexp.MustCompile(`.*Waited for .* due to client-side throttling, not priority and fairness, request: .*`)
 )
 
 // New creates a new instance of a Measurer
@@ -134,15 +140,15 @@ func (m *Measurer) RegisterSources(srcs ...sources.Source) *Measurer {
 }
 
 // RegisterEvents registers n events to the Measurer. The sources for the events must already be registered.
-func (m *Measurer) RegisterEvents(events ...*Event) (*Measurer, error) {
+func (m *Measurer) RegisterEvents(events ...*sources.Event) (*Measurer, error) {
 	var errs error
 	for _, e := range events {
-		src, ok := m.GetSource(e.Src)
+		src, ok := m.GetSource(e.SrcName)
 		if !ok {
 			errs = multierr.Append(errs, fmt.Errorf("unable to register event \"%s\" because source \"%s\" is not registered", e.Name, e.Src))
 			continue
 		}
-		e.src = src
+		e.Src = src
 		m.events = append(m.events, e)
 	}
 	return m, errs
@@ -158,17 +164,27 @@ func (m *Measurer) GetSource(name string) (sources.Source, bool) {
 func (m *Measurer) Measure(ctx context.Context) *Measurement {
 	var timings []*Timing
 	for _, event := range m.events {
-		ts, err := event.src.Find(event.Search, event.FirstOccurrence)
-		timings = append(timings, &Timing{
-			Event:     event,
-			Timestamp: ts,
-			Error:     err,
-		})
+		results, err := event.Src.Find(event)
+		for _, result := range results {
+			timings = append(timings, &Timing{
+				Event:     event,
+				Timestamp: result.Timestamp,
+				Comment:   result.Comment,
+				Error:     err,
+			})
+		}
 	}
 	// Sort timings so they are in chronological order
 	sort.Slice(timings, func(i, j int) bool {
 		return timings[i].Timestamp.UnixMicro() < timings[j].Timestamp.UnixMicro()
 	})
+
+	// Find the last terminal event index to filter out everything past
+	if _, lastTerminalIndex, ok := lo.FindLastIndexOf(timings, func(t *Timing) bool {
+		return t.Event.Terminal
+	}); ok {
+		timings = timings[:lastTerminalIndex+1]
+	}
 	// Add normalized time delta
 	for _, t := range timings {
 		t.T = t.Timestamp.Sub(timings[0].Timestamp)
@@ -184,40 +200,34 @@ func (m *Measurer) Measure(ctx context.Context) *Measurement {
 // MeasureUntil executes timing runs with the registered sources and events until all terminal events have timings or the timeout is reached
 func (m *Measurer) MeasureUntil(ctx context.Context, timeout time.Duration, retryDelay time.Duration) *Measurement {
 	startTime := time.Now().UTC()
-	anyErr := true
 	var measurement *Measurement
-	for anyErr && time.Since(startTime) < timeout {
-		anyErr = false
+	done := false
+	for !done && time.Since(startTime) < timeout {
+		done = false
 		measurement = m.Measure(ctx)
 		for _, m := range measurement.Timings {
 			if m.Error != nil {
-				anyErr = true
 				log.Printf("Unable to retrieve timing for Event \"%s\": %v\n", m.Event.Name, m.Error)
 			}
 		}
-
-		done := false
+		terminalEvents := lo.CountBy(m.events, func(e *sources.Event) bool { return e.Terminal })
+		measuredEvents := lo.CountBy(measurement.Timings, func(t *Timing) bool { return t.Error == nil })
+		measuredTerminalEvents := lo.CountBy(measurement.Timings, func(t *Timing) bool { return t.Event.Terminal && t.Error == nil })
 		// check if there are any terminal events, if so, check if they have completed successfully
-		// if all events are not terminal, then try to time all events without errors until the timeout is reached.
-		if !lo.EveryBy(measurement.Timings, func(t *Timing) bool { return !t.Event.Terminal }) {
-			// Check if all terminal events completed timings successfully
-			done = lo.EveryBy(measurement.Timings, func(t *Timing) bool {
-				if !t.Event.Terminal {
-					return true
-				}
-				return t.Error == nil
-			})
+		if terminalEvents > 0 && terminalEvents == measuredTerminalEvents {
+			done = true
+			// if all events are not terminal, then try to time all events without errors until the timeout is reached.
+		} else if terminalEvents == 0 && measuredEvents >= len(m.events) {
+			done = true
 		}
 
 		if done {
 			return measurement
-		} else if anyErr {
+		} else {
 			for _, s := range m.sources {
 				s.ClearCache()
 			}
 			time.Sleep(retryDelay)
-		} else {
-			return measurement
 		}
 	}
 	return measurement
@@ -248,25 +258,52 @@ func (m *Measurer) getMetadata(ctx context.Context) (*Metadata, error) {
 }
 
 // Chart generates a markdown chart view of a Measurement
-func (m *Measurement) Chart() {
+func (m *Measurement) Chart(opts ChartOptions) {
 	if m.Metadata != nil {
 		fmt.Printf("### %s (%s) | %s | %s | %s | %s\n",
 			m.Metadata.InstanceID, m.Metadata.PrivateIP, m.Metadata.InstanceType, m.Metadata.Architecture,
 			m.Metadata.AvailabilityZone, m.Metadata.AMIID)
 	}
+	table := tablewriter.NewWriter(os.Stdout)
+	headers := []string{ChartColumnEvent, ChartColumnTimestamp, ChartColumnT, ChartColumnComment}
+	table.SetHeader(filterColumns(opts.HiddenColumns, headers, headers))
+
 	var data [][]string
 	for _, t := range m.Timings {
-		data = append(data, []string{
-			t.Event.Name, t.Timestamp.Format("2006-01-02T15:04:05Z"), fmt.Sprintf("%.0fs", t.T.Seconds()),
-		})
+		data = append(data, filterColumns(opts.HiddenColumns, headers, []string{
+			t.Event.Name,
+			t.Timestamp.Format("2006-01-02T15:04:05Z"),
+			fmt.Sprintf("%.0fs", t.T.Seconds()),
+			t.Comment,
+		}))
 	}
 
-	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"Event", "Timestamp", "T"})
 	table.SetBorders(tablewriter.Border{Left: true, Top: false, Right: true, Bottom: false})
 	table.SetCenterSeparator("|")
 	table.AppendBulk(data)
 	table.Render()
+}
+
+// filterColumns will filter out specified columns via case insensitive string matching
+// This is used for generating the markdown chart
+func filterColumns(hiddenColumns []string, headers []string, data []string) []string {
+	// Find hidden columns indexes
+	var hiddenColIndexes []int
+	for i, header := range headers {
+		for _, hiddenCol := range hiddenColumns {
+			if strings.EqualFold(hiddenCol, header) {
+				hiddenColIndexes = append(hiddenColIndexes, i)
+			}
+		}
+	}
+	// Filter data to exclude any hidden columns
+	var filteredData []string
+	for i, col := range data {
+		if !lo.Contains(hiddenColIndexes, i) {
+			filteredData = append(filteredData, col)
+		}
+	}
+	return filteredData
 }
 
 // RegisterMetrics registers prometheus metrics based on a measurement
@@ -274,12 +311,21 @@ func (m *Measurement) RegisterMetrics(register prometheus.Registerer, experiment
 	dimensions := m.metricDimensions(experimentDimension)
 	labels := lo.Keys(dimensions)
 
-	for _, timing := range m.Timings {
+	metricCollectors := map[string]*prometheus.GaugeVec{}
+	for _, timing := range lo.UniqBy(m.Timings, func(t *Timing) string { return t.Event.Metric }) {
 		collector := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: timing.Event.Metric,
 		}, labels)
 		if err := register.Register(collector); err != nil {
 			log.Printf("error registering metric %s: %v", timing.Event.Metric, err)
+		}
+		metricCollectors[timing.Event.Metric] = collector
+	}
+	for _, timing := range m.Timings {
+		collector, ok := metricCollectors[timing.Event.Metric]
+		if !ok {
+			log.Printf("error emitting metric for %s", timing.Event.Metric)
+			continue
 		}
 		collector.With(dimensions).Set(timing.T.Seconds())
 	}
@@ -342,129 +388,156 @@ func (m *Measurer) RegisterDefaultSources() *Measurer {
 
 // RegisterDefaultEvents registers all default events shipped
 func (m *Measurer) RegisterDefaultEvents() (*Measurer, error) {
-	return m.RegisterEvents([]*Event{
+	return m.RegisterEvents([]*sources.Event{
 		{
-			Name:   "Instance Requested",
-			Metric: "instance_requested",
-			Src:    imdssrc.Name,
-			Search: imdssrc.RequestedTime,
+			Name:          "Instance Requested",
+			Metric:        "instance_requested",
+			SrcName:       imdssrc.Name,
+			MatchSelector: sources.EventMatchSelectorFirst,
+			FindFn:        lo.Must(m.GetSource(imdssrc.Name)).(*imdssrc.Source).FindByPath(imdssrc.RequestedTime),
 		},
 		{
-			Name:   "Instance Pending",
-			Metric: "instance_pending",
-			Src:    imdssrc.Name,
-			Search: imdssrc.PendingTime,
+			Name:          "Instance Pending",
+			Metric:        "instance_pending",
+			SrcName:       imdssrc.Name,
+			MatchSelector: sources.EventMatchSelectorFirst,
+			FindFn:        lo.Must(m.GetSource(imdssrc.Name)).(*imdssrc.Source).FindByPath(imdssrc.PendingTime),
 		},
 		{
-			Name:   "VM Initialized",
-			Metric: "vm_initialized",
-			Src:    messages.Name,
-			Search: vmInit.String(),
+			Name:          "VM Initialized",
+			Metric:        "vm_initialized",
+			SrcName:       messages.Name,
+			MatchSelector: sources.EventMatchSelectorFirst,
+			FindFn:        lo.Must(m.GetSource(messages.Name)).(*messages.Source).FindByRegex(vmInit),
 		},
 		{
-			Name:   "Network Start",
-			Metric: "network_start",
-			Src:    messages.Name,
-			Search: networkStart.String(),
+			Name:          "Network Start",
+			Metric:        "network_start",
+			SrcName:       messages.Name,
+			MatchSelector: sources.EventMatchSelectorFirst,
+			FindFn:        lo.Must(m.GetSource(messages.Name)).(*messages.Source).FindByRegex(networkStart),
 		},
 		{
-			Name:   "Network Ready",
-			Metric: "network_ready",
-			Src:    messages.Name,
-			Search: networkReady.String(),
+			Name:          "Network Ready",
+			Metric:        "network_ready",
+			SrcName:       messages.Name,
+			MatchSelector: sources.EventMatchSelectorFirst,
+			FindFn:        lo.Must(m.GetSource(messages.Name)).(*messages.Source).FindByRegex(networkReady),
 		},
 		{
-			Name:   "Cloud-Init Initial Start",
-			Metric: "cloudinit_initial_start",
-			Src:    messages.Name,
-			Search: cloudInitInitialStart.String(),
+			Name:          "Cloud-Init Initial Start",
+			Metric:        "cloudinit_initial_start",
+			SrcName:       messages.Name,
+			MatchSelector: sources.EventMatchSelectorFirst,
+			FindFn:        lo.Must(m.GetSource(messages.Name)).(*messages.Source).FindByRegex(cloudInitInitialStart),
 		},
 		{
-			Name:   "Cloud-Init Config Start",
-			Metric: "cloudinit_config_start",
-			Src:    messages.Name,
-			Search: cloudInitConfigStart.String(),
+			Name:          "Cloud-Init Config Start",
+			Metric:        "cloudinit_config_start",
+			SrcName:       messages.Name,
+			MatchSelector: sources.EventMatchSelectorFirst,
+			FindFn:        lo.Must(m.GetSource(messages.Name)).(*messages.Source).FindByRegex(cloudInitConfigStart),
 		},
 		{
-			Name:   "Cloud-Init Final Start",
-			Metric: "cloudinit_final_start",
-			Src:    messages.Name,
-			Search: cloudInitFinalStart.String(),
+			Name:          "Cloud-Init Final Start",
+			Metric:        "cloudinit_final_start",
+			SrcName:       messages.Name,
+			MatchSelector: sources.EventMatchSelectorFirst,
+			FindFn:        lo.Must(m.GetSource(messages.Name)).(*messages.Source).FindByRegex(cloudInitFinalStart),
 		},
 		{
-			Name:   "Cloud-Init Final Finish",
-			Metric: "cloudinit_final_finish",
-			Src:    messages.Name,
-			Search: cloudInitFinalFinish.String(),
+			Name:          "Cloud-Init Final Finish",
+			Metric:        "cloudinit_final_finish",
+			SrcName:       messages.Name,
+			MatchSelector: sources.EventMatchSelectorFirst,
+			FindFn:        lo.Must(m.GetSource(messages.Name)).(*messages.Source).FindByRegex(cloudInitFinalFinish),
 		},
 		{
-			Name:   "Containerd Start",
-			Metric: "conatinerd_start",
-			Src:    messages.Name,
-			Search: containerdStart.String(),
+			Name:          "Containerd Start",
+			Metric:        "conatinerd_start",
+			SrcName:       messages.Name,
+			MatchSelector: sources.EventMatchSelectorFirst,
+			FindFn:        lo.Must(m.GetSource(messages.Name)).(*messages.Source).FindByRegex(containerdStart),
 		},
 		{
-			Name:   "Containerd Initialized",
-			Metric: "conatinerd_initialized",
-			Src:    messages.Name,
-			Search: containerdInitialized.String(),
+			Name:          "Containerd Initialized",
+			Metric:        "conatinerd_initialized",
+			SrcName:       messages.Name,
+			MatchSelector: sources.EventMatchSelectorFirst,
+			FindFn:        lo.Must(m.GetSource(messages.Name)).(*messages.Source).FindByRegex(containerdInitialized),
 		},
 		{
-			Name:   "Kubelet Start",
-			Metric: "kubelet_start",
-			Src:    messages.Name,
-			Search: kubeletStart.String(),
+			Name:          "Kubelet Start",
+			Metric:        "kubelet_start",
+			SrcName:       messages.Name,
+			MatchSelector: sources.EventMatchSelectorFirst,
+			FindFn:        lo.Must(m.GetSource(messages.Name)).(*messages.Source).FindByRegex(kubeletStart),
 		},
 		{
-			Name:   "Kubelet Initialized",
-			Metric: "kubelet_initialized",
-			Src:    messages.Name,
-			Search: kubeletInitialized.String(),
+			Name:          "Kubelet Initialized",
+			Metric:        "kubelet_initialized",
+			SrcName:       messages.Name,
+			MatchSelector: sources.EventMatchSelectorFirst,
+			FindFn:        lo.Must(m.GetSource(messages.Name)).(*messages.Source).FindByRegex(kubeletInitialized),
 		},
 		{
-			Name:   "Kubelet Registered",
-			Metric: "kubelet_registered",
-			Src:    messages.Name,
-			Search: kubeletRegistered.String(),
+			Name:          "Kubelet Registered",
+			Metric:        "kubelet_registered",
+			SrcName:       messages.Name,
+			MatchSelector: sources.EventMatchSelectorFirst,
+			FindFn:        lo.Must(m.GetSource(messages.Name)).(*messages.Source).FindByRegex(kubeletRegistered),
 		},
 		{
-			Name:   "Kube-Proxy Start",
-			Metric: "kube_proxy_start",
-			Src:    messages.Name,
-			Search: kubeProxyStart.String(),
+			Name:          "Kube-Proxy Start",
+			Metric:        "kube_proxy_start",
+			SrcName:       messages.Name,
+			MatchSelector: sources.EventMatchSelectorFirst,
+			FindFn:        lo.Must(m.GetSource(messages.Name)).(*messages.Source).FindByRegex(kubeProxyStart),
 		},
 		{
-			Name:   "VPC CNI Init Start",
-			Metric: "vpc_cni_init_start",
-			Src:    messages.Name,
-			Search: vpcCNIInitStart.String(),
+			Name:          "VPC CNI Init Start",
+			Metric:        "vpc_cni_init_start",
+			SrcName:       messages.Name,
+			MatchSelector: sources.EventMatchSelectorFirst,
+			FindFn:        lo.Must(m.GetSource(messages.Name)).(*messages.Source).FindByRegex(vpcCNIInitStart),
 		},
 		{
-			Name:   "AWS Node Start",
-			Metric: "aws_node_start",
-			Src:    messages.Name,
-			Search: awsNodeStart.String(),
+			Name:          "AWS Node Start",
+			Metric:        "aws_node_start",
+			SrcName:       messages.Name,
+			MatchSelector: sources.EventMatchSelectorFirst,
+			FindFn:        lo.Must(m.GetSource(messages.Name)).(*messages.Source).FindByRegex(awsNodeStart),
 		},
 		{
-			Name:   "VPC CNI Plugin Initialized",
-			Metric: "vpc_cni_plugin_initialized",
-			Src:    awsnode.Name,
-			Search: vpcCNIInitialized.String(),
+			Name:          "VPC CNI Plugin Initialized",
+			Metric:        "vpc_cni_plugin_initialized",
+			SrcName:       awsnode.Name,
+			MatchSelector: sources.EventMatchSelectorFirst,
+			FindFn:        lo.Must(m.GetSource(awsnode.Name)).(*awsnode.Source).FindByRegex(vpcCNIInitialized),
 		},
 		{
-			Name:     "Node Ready",
-			Metric:   "node_ready",
-			Src:      messages.Name,
-			Terminal: true,
-			Search:   nodeReady.String(),
+			Name:          "Kube-APIServer Throttled",
+			Metric:        "kube_apiserver_throttled",
+			SrcName:       messages.Name,
+			MatchSelector: sources.EventMatchSelectorAll,
+			CommentFn:     sources.CommentMatchedLine(),
+			FindFn:        lo.Must(m.GetSource(messages.Name)).(*messages.Source).FindByRegex(throttled),
 		},
 		{
-			Name:            "Pod Ready",
-			Metric:          "pod_ready",
-			Src:             messages.Name,
-			Search:          podReady.String(),
-			Terminal:        true,
-			FirstOccurrence: true,
+			Name:          "Node Ready",
+			Metric:        "node_ready",
+			SrcName:       messages.Name,
+			Terminal:      true,
+			MatchSelector: sources.EventMatchSelectorFirst,
+			FindFn:        lo.Must(m.GetSource(messages.Name)).(*messages.Source).FindByRegex(nodeReady),
+		},
+		{
+			Name:          "Pod Ready",
+			Metric:        "pod_ready",
+			SrcName:       messages.Name,
+			Terminal:      true,
+			MatchSelector: sources.EventMatchSelectorFirst,
+			FindFn:        lo.Must(m.GetSource(messages.Name)).(*messages.Source).FindByRegex(podReady),
 		},
 	}...)
 }

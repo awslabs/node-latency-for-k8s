@@ -17,7 +17,7 @@ package messages
 
 import (
 	"regexp"
-	"time"
+	"sort"
 
 	"github.com/awslabs/node-latency-for-k8s/pkg/sources"
 )
@@ -51,15 +51,7 @@ func (m Source) ClearCache() {
 	m.logReader.ClearCache()
 }
 
-// Find searches the /var/log/messages log source based on the regexp string provided
-func (m Source) Find(search string, firstOccurrence bool) (time.Time, error) {
-	re, err := regexp.Compile(search)
-	if err != nil {
-		return time.Time{}, err
-	}
-	return m.logReader.Find(re, firstOccurrence)
-}
-
+// String is a human readable string of the source, usually the log file path
 func (m Source) String() string {
 	return m.logReader.Path
 }
@@ -67,4 +59,41 @@ func (m Source) String() string {
 // Name is the name of the source
 func (m Source) Name() string {
 	return Name
+}
+
+// FindByRegex is a helper func that returns a FindFunc to search for a regex in a log source that can be used in an Event
+func (a Source) FindByRegex(re *regexp.Regexp) sources.FindFunc {
+	return func(s sources.Source, log []byte) ([]string, error) {
+		return a.logReader.Find(re)
+	}
+}
+
+// Find will use the Event's FindFunc and CommentFunc to search the log source and return the results based on the Event's matcher
+func (a Source) Find(event *sources.Event) ([]sources.FindResult, error) {
+	logBytes, err := a.logReader.Read()
+	if err != nil {
+		return nil, err
+	}
+	matchedLines, err := event.FindFn(a, logBytes)
+	if err != nil {
+		return nil, err
+	}
+	var results []sources.FindResult
+	for _, line := range matchedLines {
+		ts, err := a.logReader.ParseTimestamp(line)
+		comment := ""
+		if event.CommentFn != nil {
+			comment = event.CommentFn(line)
+		}
+		results = append(results, sources.FindResult{
+			Line:      line,
+			Timestamp: ts,
+			Err:       err,
+			Comment:   comment,
+		})
+	}
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Timestamp.UnixMicro() < results[j].Timestamp.UnixMicro()
+	})
+	return sources.SelectMatches(results, event.MatchSelector), nil
 }

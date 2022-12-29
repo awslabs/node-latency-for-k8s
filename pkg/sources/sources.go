@@ -31,17 +31,72 @@ var (
 	spaceRE = regexp.MustCompile(`\s+`)
 )
 
-// Source ius
+// Source is an interface representing a source of events which have a time stamp or latency associated with them.
+// Most often source is a log file or an API.
 type Source interface {
 	// Find finds the string in the source using a source specific method (could be regex or HTTP path)
 	// If no time.Time could be found an error is returned
-	Find(search string, firstOccurrence bool) (time.Time, error)
+	Find(event *Event) ([]FindResult, error)
 	// Name is the source name identifier
 	Name() string
 	// ClearCache clears any cached source data
 	ClearCache()
 	// String is a human friendly version of the source, usually the log filepath
 	String() string
+}
+
+// FindResult is all data associated with a find including the raw Line data
+type FindResult struct {
+	Line      string
+	Timestamp time.Time
+	Comment   string
+	Err       error
+}
+
+type FindFunc func(s Source, log []byte) ([]string, error)
+type CommentFunc func(matchedLine string) string
+
+// Event defines what is being timed from a specific source
+type Event struct {
+	Name          string      `json:"name"`
+	Metric        string      `json:"metric"`
+	MatchSelector string      `json:"matchSelector"`
+	Terminal      bool        `json:"terminal"`
+	SrcName       string      `json:"src"`
+	Src           Source      `json:"-"`
+	CommentFn     CommentFunc `json:"-"`
+	FindFn        FindFunc    `json:"-"`
+}
+
+// Match Selector consts for an Event's MatchSelector
+const (
+	EventMatchSelectorFirst = "first"
+	EventMatchSelectorLast  = "last"
+	EventMatchSelectorAll   = "all"
+)
+
+// SelectMaches will filter raw results based on the provided matchSelector
+func SelectMatches(results []FindResult, matchSelector string) []FindResult {
+	if len(results) == 0 {
+		return nil
+	}
+	switch matchSelector {
+	case EventMatchSelectorFirst:
+		return []FindResult{results[0]}
+	case EventMatchSelectorLast:
+		return []FindResult{results[len(results)-1]}
+	case EventMatchSelectorAll:
+		return results
+	}
+	return results
+}
+
+// CommentMatchedLine is a helper func that returns a func that can be used as a CommentFunc in an Event
+// The func will use the matched line as the comment
+func CommentMatchedLine() func(matchedLine string) string {
+	return func(matchedLine string) string {
+		return matchedLine
+	}
 }
 
 // LogReader is a base Source helper that can Read file contents, cache, and support Glob file paths
@@ -123,31 +178,29 @@ func (l *LogReader) Read() ([]byte, error) {
 }
 
 // Find searches for the passed in regexp from the log references in the LogReader
-func (l *LogReader) Find(re *regexp.Regexp, firstOccurrence bool) (time.Time, error) {
+func (l *LogReader) Find(re *regexp.Regexp) ([]string, error) {
 	// Read the log file
 	messages, err := l.Read()
 	if err != nil {
-		return time.Time{}, err
+		return nil, err
 	}
-	var line []byte
-	if firstOccurrence {
-		// Find all occurrences of the regex in the log file
-		line = re.Find(messages)
-		if len(line) == 0 {
-			return time.Time{}, fmt.Errorf("no matches in %s for regex \"%s\"", l.Path, re.String())
-		}
-	} else {
-		// Find all occurrences of the regex in the log file
-		lines := re.FindAll(messages, -1)
-		if len(lines) == 0 {
-			return time.Time{}, fmt.Errorf("no matches in %s for regex \"%s\"", l.Path, re.String())
-		}
-		line = lines[len(lines)-1]
+	// Find all occurrences of the regex in the log file
+	lines := re.FindAll(messages, -1)
+	if len(lines) == 0 {
+		return nil, fmt.Errorf("no matches in %s for regex \"%s\"", l.Path, re.String())
 	}
-	// Get Timestamp from line
-	rawTS := l.TimestampRegex.FindString(string(line))
+	var lineStrs []string
+	for _, line := range lines {
+		lineStrs = append(lineStrs, string(line))
+	}
+	return lineStrs, nil
+}
+
+// ParseTimestamp usese the configured timestamp regex to find a timestamp from the passed in log line and return as a time.Time
+func (l *LogReader) ParseTimestamp(line string) (time.Time, error) {
+	rawTS := l.TimestampRegex.FindString(line)
 	if rawTS == "" {
-		return time.Time{}, fmt.Errorf("unable to find timestamp on log line matching regex: \"%s\" \"%s\"", re.String(), line)
+		return time.Time{}, fmt.Errorf("unable to find timestamp on log line matching regex: \"%s\" \"%s\"", l.TimestampRegex.String(), line)
 	}
 	rawTS = spaceRE.ReplaceAllString(rawTS, " ")
 

@@ -53,6 +53,7 @@ type Options struct {
 	IMDSEndpoint        string
 	NoIMDS              bool
 	Output              string
+	NoComments          bool
 	Version             bool
 }
 
@@ -99,7 +100,11 @@ func main() {
 	default:
 		fallthrough
 	case "markdown":
-		measurement.Chart()
+		var hiddenColumns []string
+		if options.NoComments {
+			hiddenColumns = append(hiddenColumns, latency.ChartColumnComment)
+		}
+		measurement.Chart(latency.ChartOptions{HiddenColumns: hiddenColumns})
 	}
 
 	// Emit CloudWatch Metrics if flag is enabled
@@ -147,6 +152,7 @@ func MustParseFlags(f *flag.FlagSet) Options {
 	f.StringVar(&options.IMDSEndpoint, "imds-endpoint", strEnv("IMDS_ENDPOINT", "http://169.254.169.254"), "IMDS endpoint for testing, default: http://169.254.169.254")
 	f.BoolVar(&options.NoIMDS, "no-imds", boolEnv("NO_IMDS", false), "Do not use EC2 Instance Metadata Service (IMDS), default: false")
 	f.StringVar(&options.Output, "output", strEnv("OUTPUT", "markdown"), "output type (markdown or json), default: markdown")
+	f.BoolVar(&options.NoComments, "no-comments", boolEnv("NO_COMMENTS", false), "Hide the comments column in the markdown chart output, default: false")
 	f.BoolVar(&options.Version, "version", false, "version information")
 	lo.Must0(f.Parse(os.Args[1:]))
 	return options
