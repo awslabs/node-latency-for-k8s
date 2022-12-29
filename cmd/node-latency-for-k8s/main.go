@@ -86,7 +86,10 @@ func main() {
 		log.Println("Unable to instantiate the latency timing client: ")
 		log.Printf("    %v", err)
 	}
-	measurement := latencyClient.MeasureUntil(ctx, time.Duration(options.TimeoutSeconds)*time.Second, time.Duration(options.RetryDelaySeconds)*time.Second)
+	measurement, err := latencyClient.MeasureUntil(ctx, time.Duration(options.TimeoutSeconds)*time.Second, time.Duration(options.RetryDelaySeconds)*time.Second)
+	if err != nil {
+		log.Println(err)
+	}
 
 	// Emit Measurement to stdout based on output type
 	switch options.Output {

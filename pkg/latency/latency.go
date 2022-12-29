@@ -198,9 +198,10 @@ func (m *Measurer) Measure(ctx context.Context) *Measurement {
 }
 
 // MeasureUntil executes timing runs with the registered sources and events until all terminal events have timings or the timeout is reached
-func (m *Measurer) MeasureUntil(ctx context.Context, timeout time.Duration, retryDelay time.Duration) *Measurement {
+func (m *Measurer) MeasureUntil(ctx context.Context, timeout time.Duration, retryDelay time.Duration) (*Measurement, error) {
 	startTime := time.Now().UTC()
 	var measurement *Measurement
+	terminalEvents := lo.CountBy(m.events, func(e *sources.Event) bool { return e.Terminal })
 	done := false
 	for !done && time.Since(startTime) < timeout {
 		done = false
@@ -210,7 +211,6 @@ func (m *Measurer) MeasureUntil(ctx context.Context, timeout time.Duration, retr
 				log.Printf("Unable to retrieve timing for Event \"%s\": %v\n", m.Event.Name, m.Error)
 			}
 		}
-		terminalEvents := lo.CountBy(m.events, func(e *sources.Event) bool { return e.Terminal })
 		measuredEvents := lo.CountBy(measurement.Timings, func(t *Timing) bool { return t.Error == nil })
 		measuredTerminalEvents := lo.CountBy(measurement.Timings, func(t *Timing) bool { return t.Event.Terminal && t.Error == nil })
 		// check if there are any terminal events, if so, check if they have completed successfully
@@ -222,7 +222,7 @@ func (m *Measurer) MeasureUntil(ctx context.Context, timeout time.Duration, retr
 		}
 
 		if done {
-			return measurement
+			return measurement, nil
 		} else {
 			for _, s := range m.sources {
 				s.ClearCache()
@@ -230,7 +230,18 @@ func (m *Measurer) MeasureUntil(ctx context.Context, timeout time.Duration, retr
 			time.Sleep(retryDelay)
 		}
 	}
-	return measurement
+	if terminalEvents > 0 {
+		unmeasuredTerminalEvents := lo.Filter(m.events, func(e *sources.Event, _ int) bool {
+			return e.Terminal && lo.CountBy(measurement.Timings, func(t *Timing) bool { return t.Event.Name == e.Name }) == 0
+		})
+		unmeasuredTerminalEventNames := lo.Map(unmeasuredTerminalEvents, func(e *sources.Event, _ int) string { return e.Name })
+		return measurement, fmt.Errorf("unable to measure terminal events: %v", unmeasuredTerminalEventNames)
+	}
+	unmeasuredEvents := lo.Filter(m.events, func(e *sources.Event, _ int) bool {
+		return lo.CountBy(measurement.Timings, func(t *Timing) bool { return t.Event.Name == e.Name }) == 0
+	})
+	unmeasuredEventNames := lo.Map(unmeasuredEvents, func(e *sources.Event, _ int) string { return e.Name })
+	return measurement, fmt.Errorf("unable to measure events %v within timeout window", unmeasuredEventNames)
 }
 
 // getMetadata populates the metadata for a Measurement
