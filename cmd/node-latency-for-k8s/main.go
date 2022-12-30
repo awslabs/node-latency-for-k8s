@@ -65,6 +65,7 @@ type Options struct {
 	Version             bool
 }
 
+//nolint:gocyclo
 func main() {
 	root := flag.NewFlagSet(path.Base(os.Args[0]), flag.ExitOnError)
 	root.Usage = HelpFunc(root)
@@ -244,6 +245,7 @@ func intEnv(key string, fallback int) int {
 
 // boolEnv parses env var to a boolean if the key exists
 // panics if the string cannot be parsed to a boolean
+// nolint:unparam
 func boolEnv(key string, fallback bool) bool {
 	envStrValue := strEnv(key, "")
 	if envStrValue == "" {

@@ -24,8 +24,9 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/awslabs/node-latency-for-k8s/pkg/sources"
 	"github.com/samber/lo"
+
+	"github.com/awslabs/node-latency-for-k8s/pkg/sources"
 )
 
 var (

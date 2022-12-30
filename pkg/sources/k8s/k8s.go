@@ -21,10 +21,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/awslabs/node-latency-for-k8s/pkg/sources"
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/awslabs/node-latency-for-k8s/pkg/sources"
 
 	"k8s.io/client-go/kubernetes"
 )

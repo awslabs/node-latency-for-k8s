@@ -47,40 +47,40 @@ func New(path string) *Source {
 }
 
 // ClearCache will clear the log reader cache
-func (m Source) ClearCache() {
-	m.logReader.ClearCache()
+func (s Source) ClearCache() {
+	s.logReader.ClearCache()
 }
 
 // String is a human readable string of the source, usually the log file path
-func (m Source) String() string {
-	return m.logReader.Path
+func (s Source) String() string {
+	return s.logReader.Path
 }
 
 // Name is the name of the source
-func (m Source) Name() string {
+func (s Source) Name() string {
 	return Name
 }
 
 // FindByRegex is a helper func that returns a FindFunc to search for a regex in a log source that can be used in an Event
-func (a Source) FindByRegex(re *regexp.Regexp) sources.FindFunc {
-	return func(s sources.Source, log []byte) ([]string, error) {
-		return a.logReader.Find(re)
+func (s Source) FindByRegex(re *regexp.Regexp) sources.FindFunc {
+	return func(_ sources.Source, log []byte) ([]string, error) {
+		return s.logReader.Find(re)
 	}
 }
 
 // Find will use the Event's FindFunc and CommentFunc to search the log source and return the results based on the Event's matcher
-func (a Source) Find(event *sources.Event) ([]sources.FindResult, error) {
-	logBytes, err := a.logReader.Read()
+func (s Source) Find(event *sources.Event) ([]sources.FindResult, error) {
+	logBytes, err := s.logReader.Read()
 	if err != nil {
 		return nil, err
 	}
-	matchedLines, err := event.FindFn(a, logBytes)
+	matchedLines, err := event.FindFn(s, logBytes)
 	if err != nil {
 		return nil, err
 	}
 	var results []sources.FindResult
 	for _, line := range matchedLines {
-		ts, err := a.logReader.ParseTimestamp(line)
+		ts, err := s.logReader.ParseTimestamp(line)
 		comment := ""
 		if event.CommentFn != nil {
 			comment = event.CommentFn(line)

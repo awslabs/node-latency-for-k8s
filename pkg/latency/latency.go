@@ -258,12 +258,11 @@ func (m *Measurer) MeasureUntil(ctx context.Context, timeout time.Duration, retr
 
 		if done {
 			return measurement, nil
-		} else {
-			for _, s := range m.sources {
-				s.ClearCache()
-			}
-			time.Sleep(retryDelay)
 		}
+		for _, s := range m.sources {
+			s.ClearCache()
+		}
+		time.Sleep(retryDelay)
 	}
 	if terminalEvents > 0 {
 		unmeasuredTerminalEvents := lo.Filter(m.events, func(e *sources.Event, _ int) bool {

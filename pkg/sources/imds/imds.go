@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
+
 	"github.com/awslabs/node-latency-for-k8s/pkg/sources"
 )
 
