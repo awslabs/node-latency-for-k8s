@@ -102,29 +102,30 @@ chmod +x node-latency-for-k8s
 
 ```
 > node-latency-for-k8s --output markdown
-### i-06428b3f38ba5ec42 (10.0.1.16) | c6a.large | x86_64 | us-east-2c | ami-0bdaaba680b3688e2
-|           EVENT            |      TIMESTAMP       |  T  |
-|----------------------------|----------------------|-----|
-| Instance Requested         | 2022-12-12T02:20:01Z | 0s  |
-| Instance Pending           | 2022-12-12T02:20:02Z | 1s  |
-| VM Initialized             | 2022-12-12T02:20:12Z | 11s |
-| Containerd Initialized     | 2022-12-12T02:20:16Z | 15s |
-| Network Start              | 2022-12-12T02:20:16Z | 15s |
-| Cloud-Init Initial Start   | 2022-12-12T02:20:16Z | 15s |
-| Network Ready              | 2022-12-12T02:20:16Z | 15s |
-| Containerd Start           | 2022-12-12T02:20:16Z | 15s |
-| Cloud-Init Config Start    | 2022-12-12T02:20:17Z | 16s |
-| Cloud-Init Final Start     | 2022-12-12T02:20:18Z | 17s |
-| Kubelet Initialized        | 2022-12-12T02:20:20Z | 19s |
-| Kubelet Start              | 2022-12-12T02:20:20Z | 19s |
-| Cloud-Init Final Finish    | 2022-12-12T02:20:20Z | 19s |
-| Kubelet Registered         | 2022-12-12T02:20:20Z | 19s |
-| Kube-Proxy Start           | 2022-12-12T02:20:22Z | 21s |
-| VPC CNI Init Start         | 2022-12-12T02:20:22Z | 21s |
-| AWS Node Start             | 2022-12-12T02:20:22Z | 21s |
-| VPC CNI Plugin Initialized | 2022-12-12T02:20:24Z | 23s |
-| Pod Ready                  | 2022-12-12T02:20:30Z | 29s |
-| Node Ready                 | 2022-12-12T02:20:31Z | 30s |
+### i-0681ec41ddb32ba4e (192.168.23.248) | c6a.large | x86_64 | us-east-2b | ami-0bf8f0f9cd3cce116
+|           EVENT            |      TIMESTAMP       |  T  | COMMENT |
+|----------------------------|----------------------|-----|---------|
+| Pod Created                | 2022-12-30T15:26:15Z | 0s  |         |
+| Fleet Requested            | 2022-12-30T15:26:17Z | 2s  |         |
+| Instance Pending           | 2022-12-30T15:26:19Z | 4s  |         |
+| VM Initialized             | 2022-12-30T15:26:29Z | 14s |         |
+| Network Start              | 2022-12-30T15:26:32Z | 17s |         |
+| Network Ready              | 2022-12-30T15:26:32Z | 17s |         |
+| Containerd Start           | 2022-12-30T15:26:33Z | 18s |         |
+| Containerd Initialized     | 2022-12-30T15:26:33Z | 18s |         |
+| Cloud-Init Initial Start   | 2022-12-30T15:26:33Z | 18s |         |
+| Cloud-Init Config Start    | 2022-12-30T15:26:34Z | 19s |         |
+| Cloud-Init Final Start     | 2022-12-30T15:26:35Z | 20s |         |
+| Cloud-Init Final Finish    | 2022-12-30T15:26:36Z | 21s |         |
+| Kubelet Start              | 2022-12-30T15:26:36Z | 21s |         |
+| Kubelet Registered         | 2022-12-30T15:26:37Z | 22s |         |
+| Kubelet Initialized        | 2022-12-30T15:26:37Z | 22s |         |
+| Kube-Proxy Start           | 2022-12-30T15:26:39Z | 24s |         |
+| VPC CNI Init Start         | 2022-12-30T15:26:39Z | 24s |         |
+| AWS Node Start             | 2022-12-30T15:26:39Z | 24s |         |
+| Node Ready                 | 2022-12-30T15:26:41Z | 26s |         |
+| VPC CNI Plugin Initialized | 2022-12-30T15:26:41Z | 26s |         |
+| Pod Ready                  | 2022-12-30T15:26:43Z | 28s |         |
 ```
 
 ## Example 2 - Prometheus Metrics

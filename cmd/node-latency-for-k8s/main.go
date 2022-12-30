@@ -31,9 +31,14 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/samber/lo"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/homedir"
 
 	"github.com/awslabs/node-latency-for-k8s/pkg/latency"
 )
@@ -51,6 +56,9 @@ type Options struct {
 	RetryDelaySeconds   int
 	MetricsPort         int
 	IMDSEndpoint        string
+	Kubeconfig          string
+	PodNamespace        string
+	NodeName            string
 	NoIMDS              bool
 	Output              string
 	NoComments          bool
@@ -67,25 +75,47 @@ func main() {
 		os.Exit(0)
 	}
 	ctx := context.Background()
+	var err error
 	latencyClient := latency.New()
 
-	if !options.NoIMDS {
-		cfg, err := config.LoadDefaultConfig(ctx, withIMDSEndpoint(options.IMDSEndpoint))
+	// Setup K8s clientset
+	var k8sConfig *rest.Config
+	if options.Kubeconfig != "" {
+		k8sConfig, err = clientcmd.BuildConfigFromFlags("", options.Kubeconfig)
 		if err != nil {
-			log.Fatalf("unable to load AWS SDK config, %v", err)
+			log.Fatalf("Unable to create K8s clientset from kubeconfig: %s", err)
 		}
-		imdsClient := imds.NewFromConfig(cfg)
+	} else {
+		k8sConfig, err = rest.InClusterConfig()
+	}
+	if err == nil {
+		clientset, err := kubernetes.NewForConfig(k8sConfig)
 		if err != nil {
-			log.Fatalln(err)
+			log.Fatalf("Unable to create K8s clientset: %s", err)
 		}
-		latencyClient.WithIMDS(imdsClient)
+		latencyClient = latencyClient.WithK8sClientset(clientset).WithPodNamespace(options.PodNamespace).WithNodeName(options.NodeName)
+	} else {
+		log.Printf("Unable to find in-cluster K8s config: %s\n", err)
 	}
 
-	latencyClient, err := latencyClient.RegisterDefaultSources().RegisterDefaultEvents()
+	// Setup AWS Config and Clients
+	cfg, err := config.LoadDefaultConfig(ctx, withIMDSEndpoint(options.IMDSEndpoint))
+	if err != nil {
+		log.Fatalf("unable to load AWS SDK config, %s", err)
+	}
+	if !options.NoIMDS {
+		latencyClient = latencyClient.WithIMDS(imds.NewFromConfig(cfg))
+	}
+	latencyClient = latencyClient.WithEC2Client(ec2.NewFromConfig(cfg))
+
+	// Register the Default Sources and Events
+	latencyClient, err = latencyClient.RegisterDefaultSources().RegisterDefaultEvents()
 	if err != nil {
 		log.Println("Unable to instantiate the latency timing client: ")
-		log.Printf("    %v", err)
+		log.Printf("    %s", err)
 	}
+
+	// Take measurements
 	measurement, err := latencyClient.MeasureUntil(ctx, time.Duration(options.TimeoutSeconds)*time.Second, time.Duration(options.RetryDelaySeconds)*time.Second)
 	if err != nil {
 		log.Println(err)
@@ -114,11 +144,11 @@ func main() {
 	if options.CloudWatch {
 		cfg, err := config.LoadDefaultConfig(ctx)
 		if err != nil {
-			log.Fatalf("unable to load AWS SDK config, %v", err)
+			log.Fatalf("unable to load AWS SDK config, %s", err)
 		}
 		cw := cloudwatch.NewFromConfig(cfg)
 		if err := measurement.EmitCloudWatchMetrics(ctx, cw, options.ExperimentDimension); err != nil {
-			log.Printf("Error emitting CloudWatch metrics: %v\n", err)
+			log.Printf("Error emitting CloudWatch metrics: %s\n", err)
 		} else {
 			log.Println("Successfully emitted CloudWatch metrics")
 		}
@@ -154,9 +184,12 @@ func MustParseFlags(f *flag.FlagSet) Options {
 	f.IntVar(&options.RetryDelaySeconds, "retry-delay", intEnv("RETRY_DELAY", 5), "Delay in seconds in-between timing retrievals, default: 5")
 	f.StringVar(&options.IMDSEndpoint, "imds-endpoint", strEnv("IMDS_ENDPOINT", "http://169.254.169.254"), "IMDS endpoint for testing, default: http://169.254.169.254")
 	f.BoolVar(&options.NoIMDS, "no-imds", boolEnv("NO_IMDS", false), "Do not use EC2 Instance Metadata Service (IMDS), default: false")
+	f.StringVar(&options.PodNamespace, "pod-namespace", strEnv("POD_NAMESPACE", "default"), "namespace of the pods that will be measured from creation to running, default: default")
+	f.StringVar(&options.NodeName, "node-name", strEnv("NODE_NAME", ""), "ndoe name to query for the first pod creation time in the pod namespace, default: <auto-discovered via IMDS>")
 	f.StringVar(&options.Output, "output", strEnv("OUTPUT", "markdown"), "output type (markdown or json), default: markdown")
 	f.BoolVar(&options.NoComments, "no-comments", boolEnv("NO_COMMENTS", false), "Hide the comments column in the markdown chart output, default: false")
 	f.BoolVar(&options.Version, "version", false, "version information")
+	f.StringVar(&options.Kubeconfig, "kubeconfig", defaultKubeconfig(), "(optional) absolute path to the kubeconfig file")
 	lo.Must0(f.Parse(os.Args[1:]))
 	return options
 }
@@ -170,6 +203,19 @@ func HelpFunc(f *flag.FlagSet) func() {
 			fmt.Printf("      %s\n", fl.Usage)
 		})
 	}
+}
+
+func defaultKubeconfig() string {
+	if val, ok := os.LookupEnv("KUBECONFIG"); ok {
+		return val
+	}
+	if home := homedir.HomeDir(); home != "" {
+		kubeconfigPath := filepath.Join(home, ".kube", "config")
+		if _, err := os.Stat(kubeconfigPath); err == nil {
+			return kubeconfigPath
+		}
+	}
+	return ""
 }
 
 // strEnv retrieves the env var key or defaults to fallback value

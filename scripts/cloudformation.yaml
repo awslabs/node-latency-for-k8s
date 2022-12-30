@@ -15,4 +15,7 @@ Resources:
           - Effect: Allow
             Action:
               - cloudwatch:PutMetricData
+              - ec2:DescribeTags
+              - ec2:DescribeFleets
+              - ec2:DescribeInstances
             Resource: "*"

@@ -75,6 +75,15 @@ const (
 	EventMatchSelectorAll   = "all"
 )
 
+// Timing is a specific instance of an Event timing
+type Timing struct {
+	Event     *Event        `json:"event"`
+	Timestamp time.Time     `json:"timestamp"`
+	T         time.Duration `json:"seconds"`
+	Comment   string        `json:"comment"`
+	Error     error         `json:"error"`
+}
+
 // SelectMaches will filter raw results based on the provided matchSelector
 func SelectMatches(results []FindResult, matchSelector string) []FindResult {
 	if len(results) == 0 {

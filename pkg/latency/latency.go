@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"regexp"
@@ -31,29 +32,37 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/olekukonko/tablewriter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/samber/lo"
 	"go.uber.org/multierr"
+	"k8s.io/client-go/kubernetes"
 
 	"github.com/awslabs/node-latency-for-k8s/pkg/sources"
 	"github.com/awslabs/node-latency-for-k8s/pkg/sources/awsnode"
+	ec2src "github.com/awslabs/node-latency-for-k8s/pkg/sources/ec2"
 	imdssrc "github.com/awslabs/node-latency-for-k8s/pkg/sources/imds"
+	k8ssrc "github.com/awslabs/node-latency-for-k8s/pkg/sources/k8s"
 	"github.com/awslabs/node-latency-for-k8s/pkg/sources/messages"
 )
 
 // Measurer holds registered sources and events to use for timing runs
 type Measurer struct {
-	sources    map[string]sources.Source
-	events     []*sources.Event
-	metadata   *Metadata
-	imdsClient *imds.Client
+	sources      map[string]sources.Source
+	events       []*sources.Event
+	metadata     *Metadata
+	imdsClient   *imds.Client
+	ec2Client    *ec2.Client
+	k8sClientset *kubernetes.Clientset
+	podNamespace string
+	nodeName     string
 }
 
 // Measurement is a specific timing produced from a Measurer run
 type Measurement struct {
-	Metadata *Metadata `json:"metadata"`
-	Timings  []*Timing `json:"timings"`
+	Metadata *Metadata         `json:"metadata"`
+	Timings  []*sources.Timing `json:"timings"`
 }
 
 // Metadata provides data about the node where measurements are executed
@@ -66,15 +75,6 @@ type Metadata struct {
 	AvailabilityZone string `json:"availabilityZone"`
 	PrivateIP        string `json:"privateIP"`
 	AMIID            string `json:"amiID"`
-}
-
-// Timing is a specific instance of an Event timing
-type Timing struct {
-	Event     *sources.Event `json:"event"`
-	Timestamp time.Time      `json:"timestamp"`
-	T         time.Duration  `json:"seconds"`
-	Comment   string         `json:"comment"`
-	Error     error          `json:"error"`
 }
 
 // ChartOptions allows configuration of the markdown chart
@@ -126,6 +126,30 @@ func (m *Measurer) WithIMDS(imdsClient *imds.Client) *Measurer {
 	return m
 }
 
+// WithEC2Client is a builder func that adds an ec2 client to a Measurer
+func (m *Measurer) WithEC2Client(ec2Client *ec2.Client) *Measurer {
+	m.ec2Client = ec2Client
+	return m
+}
+
+// WithK8sClientset is a builder func that adds a k8s clientset to a Measurer
+func (m *Measurer) WithK8sClientset(clientset *kubernetes.Clientset) *Measurer {
+	m.k8sClientset = clientset
+	return m
+}
+
+// WithPodNamespace sets the pod namespace that will be queried to measure pod creation to running time
+func (m *Measurer) WithPodNamespace(podNamespace string) *Measurer {
+	m.podNamespace = podNamespace
+	return m
+}
+
+// WithNodeName sets the node name that will be used to query for the first scheduled pod on the given node name
+func (m *Measurer) WithNodeName(nodeName string) *Measurer {
+	m.nodeName = nodeName
+	return m
+}
+
 // MustWithDefaultConfig registers the default sources and events to the Measurer and panics if any errors occur
 func (m *Measurer) MustWithDefaultConfig() *Measurer {
 	return lo.Must(m.RegisterDefaultSources().RegisterDefaultEvents())
@@ -162,15 +186,18 @@ func (m *Measurer) GetSource(name string) (sources.Source, bool) {
 
 // Measure executes a single timing run with the registered sources and events
 func (m *Measurer) Measure(ctx context.Context) *Measurement {
-	var timings []*Timing
+	var timings []*sources.Timing
 	for _, event := range m.events {
 		results, err := event.Src.Find(event)
+		if len(results) == 0 {
+			results = []sources.FindResult{{}}
+		}
 		for _, result := range results {
-			timings = append(timings, &Timing{
+			timings = append(timings, &sources.Timing{
 				Event:     event,
 				Timestamp: result.Timestamp,
 				Comment:   result.Comment,
-				Error:     err,
+				Error:     multierr.Append(err, result.Err),
 			})
 		}
 	}
@@ -180,14 +207,22 @@ func (m *Measurer) Measure(ctx context.Context) *Measurement {
 	})
 
 	// Find the last terminal event index to filter out everything past
-	if _, lastTerminalIndex, ok := lo.FindLastIndexOf(timings, func(t *Timing) bool {
+	if _, lastTerminalIndex, ok := lo.FindLastIndexOf(timings, func(t *sources.Timing) bool {
 		return t.Event.Terminal
 	}); ok {
 		timings = timings[:lastTerminalIndex+1]
 	}
+	firstSuccessfulTiming := timings[0]
+	// Find first successful timing
+	for _, t := range timings {
+		if t.Error == nil {
+			firstSuccessfulTiming = t
+			break
+		}
+	}
 	// Add normalized time delta
 	for _, t := range timings {
-		t.T = t.Timestamp.Sub(timings[0].Timestamp)
+		t.T = t.Timestamp.Sub(firstSuccessfulTiming.Timestamp)
 	}
 	// ignore metadata errors
 	metadata, _ := m.getMetadata(ctx)
@@ -211,8 +246,8 @@ func (m *Measurer) MeasureUntil(ctx context.Context, timeout time.Duration, retr
 				log.Printf("Unable to retrieve timing for Event \"%s\": %v\n", m.Event.Name, m.Error)
 			}
 		}
-		measuredEvents := lo.CountBy(measurement.Timings, func(t *Timing) bool { return t.Error == nil })
-		measuredTerminalEvents := lo.CountBy(measurement.Timings, func(t *Timing) bool { return t.Event.Terminal && t.Error == nil })
+		measuredEvents := lo.CountBy(measurement.Timings, func(t *sources.Timing) bool { return t.Error == nil })
+		measuredTerminalEvents := lo.CountBy(measurement.Timings, func(t *sources.Timing) bool { return t.Event.Terminal && t.Error == nil })
 		// check if there are any terminal events, if so, check if they have completed successfully
 		if terminalEvents > 0 && terminalEvents == measuredTerminalEvents {
 			done = true
@@ -232,13 +267,13 @@ func (m *Measurer) MeasureUntil(ctx context.Context, timeout time.Duration, retr
 	}
 	if terminalEvents > 0 {
 		unmeasuredTerminalEvents := lo.Filter(m.events, func(e *sources.Event, _ int) bool {
-			return e.Terminal && lo.CountBy(measurement.Timings, func(t *Timing) bool { return t.Event.Name == e.Name }) == 0
+			return e.Terminal && lo.CountBy(measurement.Timings, func(t *sources.Timing) bool { return t.Event.Name == e.Name }) == 0
 		})
 		unmeasuredTerminalEventNames := lo.Map(unmeasuredTerminalEvents, func(e *sources.Event, _ int) string { return e.Name })
 		return measurement, fmt.Errorf("unable to measure terminal events: %v", unmeasuredTerminalEventNames)
 	}
 	unmeasuredEvents := lo.Filter(m.events, func(e *sources.Event, _ int) bool {
-		return lo.CountBy(measurement.Timings, func(t *Timing) bool { return t.Event.Name == e.Name }) == 0
+		return lo.CountBy(measurement.Timings, func(t *sources.Timing) bool { return t.Event.Name == e.Name }) == 0
 	})
 	unmeasuredEventNames := lo.Map(unmeasuredEvents, func(e *sources.Event, _ int) string { return e.Name })
 	return measurement, fmt.Errorf("unable to measure events %v within timeout window", unmeasuredEventNames)
@@ -281,6 +316,10 @@ func (m *Measurement) Chart(opts ChartOptions) {
 
 	var data [][]string
 	for _, t := range m.Timings {
+		if t.Error != nil {
+			log.Printf("Error with event \"%s\" timing: %v\n", t.Event.Name, t.Error)
+			continue
+		}
 		data = append(data, filterColumns(opts.HiddenColumns, headers, []string{
 			t.Event.Name,
 			t.Timestamp.Format("2006-01-02T15:04:05Z"),
@@ -323,7 +362,7 @@ func (m *Measurement) RegisterMetrics(register prometheus.Registerer, experiment
 	labels := lo.Keys(dimensions)
 
 	metricCollectors := map[string]*prometheus.GaugeVec{}
-	for _, timing := range lo.UniqBy(m.Timings, func(t *Timing) string { return t.Event.Metric }) {
+	for _, timing := range lo.UniqBy(m.Timings, func(t *sources.Timing) string { return t.Event.Metric }) {
 		collector := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: timing.Event.Metric,
 		}, labels)
@@ -394,6 +433,34 @@ func (m *Measurer) RegisterDefaultSources() *Measurer {
 	if m.imdsClient != nil {
 		m.RegisterSources(imdssrc.New(m.imdsClient))
 	}
+	if m.ec2Client != nil {
+		instanceID := ""
+		if m.imdsClient != nil {
+			md, err := m.getMetadata(context.TODO())
+			if err != nil {
+				log.Printf("unable to retrieve instance-id to register the ec2 event source: %s", err)
+			} else {
+				instanceID = md.InstanceID
+			}
+		}
+		m.RegisterSources(ec2src.New(m.ec2Client, instanceID, m.nodeName))
+	}
+	if m.k8sClientset != nil && m.podNamespace != "" {
+		if m.nodeName == "" && m.imdsClient != nil {
+			out, err := m.imdsClient.GetMetadata(context.TODO(), &imds.GetMetadataInput{Path: "/hostname"})
+			if err != nil {
+				log.Printf("unable to register K8s source because node name is required and is unable to be retrieved via EC2 IMDS: %v\n", err)
+			}
+			dnsName, err := io.ReadAll(out.Content)
+			if err != nil {
+				log.Printf("unable to register K8s source because node name is required and is unable to be read via EC2 IMDS: %v\n", err)
+			}
+			m.nodeName = string(dnsName)
+		}
+		if m.nodeName != "" {
+			m.RegisterSources(k8ssrc.New(m.k8sClientset, m.nodeName, m.podNamespace))
+		}
+	}
 	return m
 }
 
@@ -401,11 +468,18 @@ func (m *Measurer) RegisterDefaultSources() *Measurer {
 func (m *Measurer) RegisterDefaultEvents() (*Measurer, error) {
 	return m.RegisterEvents([]*sources.Event{
 		{
-			Name:          "Instance Requested",
-			Metric:        "instance_requested",
-			SrcName:       imdssrc.Name,
+			Name:          "Pod Created",
+			Metric:        "pod_created",
+			SrcName:       k8ssrc.Name,
 			MatchSelector: sources.EventMatchSelectorFirst,
-			FindFn:        lo.Must(m.GetSource(imdssrc.Name)).(*imdssrc.Source).FindByPath(imdssrc.RequestedTime),
+			FindFn:        lo.Must(m.GetSource(k8ssrc.Name)).(*k8ssrc.Source).FindPodCreationTime(),
+		},
+		{
+			Name:          "Fleet Requested",
+			Metric:        "fleet_requested",
+			SrcName:       ec2src.Name,
+			MatchSelector: sources.EventMatchSelectorFirst,
+			FindFn:        lo.Must(m.GetSource(ec2src.Name)).(*ec2src.Source).FindFleetStart(),
 		},
 		{
 			Name:          "Instance Pending",

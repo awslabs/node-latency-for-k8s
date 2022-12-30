@@ -56,3 +56,9 @@ env:
     value: "markdown"
   - name: NO_COMMENTS
     value: "false"
+  - name: "TIMEOUT"
+    value: "30"
+  - name: NODE_NAME
+    valueFrom:
+      fieldRef:
+        fieldPath: spec.nodeName
