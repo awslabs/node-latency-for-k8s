@@ -47,12 +47,12 @@ Usage for node-latency-for-k8s:
 ### K8s DaemonSet (Helm)
 
 ```
-curl -Lo 01-create-iam-policy.sh https://raw.githubusercontent.com/awslabs/node-latency-for-k8s/v0.1.7/scripts/01-create-iam-policy.sh
-curl -Lo 02-create-service-account.sh https://raw.githubusercontent.com/awslabs/node-latency-for-k8s/v0.1.7/scripts/02-create-service-account.sh
+curl -Lo 01-create-iam-policy.sh https://raw.githubusercontent.com/awslabs/node-latency-for-k8s/v0.1.8/scripts/01-create-iam-policy.sh
+curl -Lo 02-create-service-account.sh https://raw.githubusercontent.com/awslabs/node-latency-for-k8s/v0.1.8/scripts/02-create-service-account.sh
 chmod +x 01-create-iam-policy.sh 02-create-service-account.sh
 ./01-create-iam-policy.sh && ./02-create-service-account.sh
 export CLUSTER_NAME=<Fill in CLUSTER_NAME here>
-export VERSION="v0.1.7"
+export VERSION="v0.1.8"
 
 export AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 export KNL_IAM_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/${CLUSTER_NAME}-node-latency-for-k8s"
@@ -73,15 +73,15 @@ Debian / Ubuntu:
 
 ```
 [[ `uname -m` == "aarch64" ]] && ARCH="arm64" || ARCH="amd64"
-wget https://github.com/awslabs/node-latency-for-k8s/releases/download/v0.1.7/node-latency-for-k8s_0.1.7_linux_${ARCH}.deb
-dpkg --install node-latency-for-k8s_0.1.7_linux_${ARCH}.deb
+wget https://github.com/awslabs/node-latency-for-k8s/releases/download/v0.1.8/node-latency-for-k8s_0.1.8_linux_${ARCH}.deb
+dpkg --install node-latency-for-k8s_0.1.8_linux_${ARCH}.deb
 ```
 
 RedHat:
 
 ```
 [[ `uname -m` == "aarch64" ]] && ARCH="arm64" || ARCH="amd64"
-rpm -i https://github.com/awslabs/node-latency-for-k8s/releases/download/v0.1.7/node-latency-for-k8s_0.1.7_linux_${ARCH}.rpm
+rpm -i https://github.com/awslabs/node-latency-for-k8s/releases/download/v0.1.8/node-latency-for-k8s_0.1.8_linux_${ARCH}.rpm
 ```
 
 Download Binary Directly:
@@ -89,7 +89,7 @@ Download Binary Directly:
 ```
 [[ `uname -m` == "aarch64" ]] && ARCH="arm64" || ARCH="amd64"
 OS=`uname | tr '[:upper:]' '[:lower:]'`
-wget -qO- https://github.com/awslabs/node-latency-for-k8s/releases/download/v0.1.7/node-latency-for-k8s_0.1.7_${OS}_${ARCH}.tar.gz | tar xvz
+wget -qO- https://github.com/awslabs/node-latency-for-k8s/releases/download/v0.1.8/node-latency-for-k8s_0.1.8_${OS}_${ARCH}.tar.gz | tar xvz
 chmod +x node-latency-for-k8s
 ```
 
