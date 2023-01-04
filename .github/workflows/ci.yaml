@@ -28,4 +28,4 @@ jobs:
             ~/go/bin/
           key: ${{ runner.os }}-go-cache-${{ hashFiles('go.sum', 'hack/toolchain.sh') }}
       - name: Verify
-        run: make verify
+        run: make toolchain verify
