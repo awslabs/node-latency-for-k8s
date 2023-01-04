@@ -93,7 +93,7 @@ func (i Source) GetMetadata(path string) (string, error) {
 	ctx := context.TODO()
 	identityDoc, err := i.imds.GetInstanceIdentityDocument(ctx, &imds.GetInstanceIdentityDocumentInput{})
 	if err != nil {
-		return "", fmt.Errorf("unable to retrieve instance-identity document: %v", err)
+		return "", fmt.Errorf("unable to retrieve instance-identity document: %w", err)
 	}
 	if path == PendingTime {
 		return strconv.FormatInt(identityDoc.PendingTime.UnixMicro(), 10), nil
