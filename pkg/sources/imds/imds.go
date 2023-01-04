@@ -29,19 +29,12 @@ import (
 var (
 	Name             = "EC2 IMDS"
 	DynamicDocPrefix = "/dynamic/instance-identity/document"
-	RequestedTime    = fmt.Sprintf("%s/%s", DynamicDocPrefix, "requestedTime")
 	PendingTime      = fmt.Sprintf("%s/%s", DynamicDocPrefix, "pendingTime")
 )
 
 // Source is the EC2 Instance Metadata Service (IMDS) http source
 type Source struct {
 	imds *imds.Client
-}
-
-type ErrMetadata struct{}
-
-func (e ErrMetadata) Error() string {
-	return "metadata error"
 }
 
 // New instantiates a new instance of the IMDS source
@@ -100,18 +93,10 @@ func (i Source) GetMetadata(path string) (string, error) {
 	ctx := context.TODO()
 	identityDoc, err := i.imds.GetInstanceIdentityDocument(ctx, &imds.GetInstanceIdentityDocumentInput{})
 	if err != nil {
-		return "", fmt.Errorf("unable to retrieve instance-identity document: %v %w", err, ErrMetadata{})
+		return "", fmt.Errorf("unable to retrieve instance-identity document: %v", err)
 	}
-	if err != nil {
-		return "", err
-	}
-	switch path {
-	case PendingTime:
+	if path == PendingTime {
 		return strconv.FormatInt(identityDoc.PendingTime.UnixMicro(), 10), nil
-	case RequestedTime:
-		// requestedTime doesn't actually exist, but this is approximately right that EC2 takes about 1 second
-		// to handle the API request for an instance before it goes pending.
-		return strconv.FormatInt(identityDoc.PendingTime.Add(-1*time.Second).UnixMicro(), 10), nil
 	}
 	return "", fmt.Errorf("metadata for path \"%s\" is not available", path)
 }

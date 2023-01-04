@@ -109,8 +109,8 @@ var (
 	awsNodeStart          = regexp.MustCompile(`.*CreateContainer within sandbox .*Name:aws-node.* returns container id.*`)
 	vpcCNIInitialized     = regexp.MustCompile(`.*Successfully copied CNI plugin binary and config file.*`)
 	nodeReady             = regexp.MustCompile(`.*event="NodeReady".*`)
-	podReady              = regexp.MustCompile(`.*default/.* Type:ContainerStarted.*`)
 	throttled             = regexp.MustCompile(`.*Waited for .* due to client-side throttling, not priority and fairness, request: .*`)
+	podReadyStr           = `.*%s/.* Type:ContainerStarted.*`
 )
 
 // New creates a new instance of a Measurer
@@ -190,7 +190,7 @@ func (m *Measurer) Measure(ctx context.Context) *Measurement {
 	for _, event := range m.events {
 		results, err := event.Src.Find(event)
 		if len(results) == 0 {
-			results = []sources.FindResult{{}}
+			results = []sources.FindResult{}
 		}
 		for _, result := range results {
 			timings = append(timings, &sources.Timing{
@@ -621,7 +621,7 @@ func (m *Measurer) RegisterDefaultEvents() (*Measurer, error) {
 			SrcName:       messages.Name,
 			Terminal:      true,
 			MatchSelector: sources.EventMatchSelectorFirst,
-			FindFn:        lo.Must(m.GetSource(messages.Name)).(*messages.Source).FindByRegex(podReady),
+			FindFn:        lo.Must(m.GetSource(messages.Name)).(*messages.Source).FindByRegex(regexp.MustCompile(fmt.Sprintf(podReadyStr, m.podNamespace))),
 		},
 	}...)
 }

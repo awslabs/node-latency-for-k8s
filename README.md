@@ -18,12 +18,20 @@ Usage for node-latency-for-k8s:
       Custom dimension to add to experiment metrics, default: none
    --imds-endpoint
       IMDS endpoint for testing, default: http://169.254.169.254
+   --kubeconfig
+      (optional) absolute path to the kubeconfig file
    --metrics-port
       The port to serve prometheus metrics from, default: 2112
+   --no-comments
+      Hide the comments column in the markdown chart output, default: false
    --no-imds
       Do not use EC2 Instance Metadata Service (IMDS), default: false
+   --node-name
+      ndoe name to query for the first pod creation time in the pod namespace, default: <auto-discovered via IMDS>
    --output
       output type (markdown or json), default: markdown
+   --pod-namespace
+      namespace of the pods that will be measured from creation to running, default: default
    --prometheus-metrics
       Expose a Prometheus metrics endpoint (this runs as a daemon), default: false
    --retry-delay
@@ -38,22 +46,11 @@ Usage for node-latency-for-k8s:
 
 ### K8s DaemonSet (Helm)
 
-**The below installation works if you do not need CloudWatch metrics**
 ```
-export VERSION="v0.1.7"
-
-docker logout public.ecr.aws
-helm upgrade --install node-latency-for-k8s oci://public.ecr.aws/g4k0u1s2/node-latency-for-k8s-chart \
-   --version ${VERSION} \
-   --namespace node-latency-for-k8s \
-   --wait
-```
-
-
-**If you do need CloudWatch metrics, then give the DS an IAM Role**
-```
-git clone https://github.com/awslabs/node-latency-for-k8s.git
-cd scripts/ && ./01-create-iam-policy.sh && ./02-create-service-account.sh
+curl -Lo 01-create-iam-policy.sh https://raw.githubusercontent.com/awslabs/node-latency-for-k8s/v0.1.7/scripts/01-create-iam-policy.sh
+curl -Lo 02-create-service-account.sh https://raw.githubusercontent.com/awslabs/node-latency-for-k8s/v0.1.7/scripts/02-create-service-account.sh
+chmod +x 01-create-iam-policy.sh 02-create-service-account.sh
+./01-create-iam-policy.sh && ./02-create-service-account.sh
 export CLUSTER_NAME=<Fill in CLUSTER_NAME here>
 export VERSION="v0.1.7"
 
