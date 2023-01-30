@@ -7,7 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.18.8
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.12.21
 	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.25.1
-	github.com/aws/aws-sdk-go-v2/service/ec2 v1.80.0
+	github.com/aws/aws-sdk-go-v2/service/ec2 v1.81.0
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/prometheus/client_golang v1.14.0
 	github.com/samber/lo v1.37.0
