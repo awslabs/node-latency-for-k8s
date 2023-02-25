@@ -46,6 +46,7 @@ nodeSelector:
   kubernetes.io/os: linux
 tolerations: []
 affinity: {}
+priorityClassName: ""
 
 env:
   - name: PROMETHEUS_METRICS
