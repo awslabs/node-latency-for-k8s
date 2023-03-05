@@ -39,7 +39,7 @@ jobs:
       - env:
           NLK_KO_DOCKER_REPO: public.ecr.aws/g4k0u1s2
         run: |
-          make publish
+          VERSION=${GITHUB_REF#refs/*/} make publish
       -
         name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v4

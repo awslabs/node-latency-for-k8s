@@ -21,7 +21,7 @@ build: ## Build the controller image
 	$(eval CONTROLLER_DIGEST=$(shell echo ${CONTROLLER_IMG} | sed 's/.*node-latency-for-k8s:.*@//'))
 	echo Built ${CONTROLLER_IMG}
 
-publish: verify docs build ## Build and publish container images and helm chart
+publish: verify build docs ## Build and publish container images and helm chart
 	aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${KO_DOCKER_REPO}
 	sed -i.bak "s|repository:.*|repository: $(KO_DOCKER_REPO)/node-latency-for-k8s|" charts/node-latency-for-k8s-chart/values.yaml
 	sed -i.bak "s|tag:.*|tag: ${CONTROLLER_TAG}|" charts/node-latency-for-k8s-chart/values.yaml
