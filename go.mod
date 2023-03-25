@@ -13,7 +13,7 @@ require (
 	github.com/samber/lo v1.37.0
 	go.uber.org/multierr v1.9.0
 	k8s.io/api v0.26.2
-	k8s.io/apimachinery v0.26.2
+	k8s.io/apimachinery v0.26.3
 	k8s.io/client-go v0.26.1
 )
 
