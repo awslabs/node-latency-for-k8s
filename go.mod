@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.91.0
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/prometheus/client_golang v1.14.0
-	github.com/samber/lo v1.37.0
+	github.com/samber/lo v1.38.1
 	go.uber.org/multierr v1.9.0
 	k8s.io/api v0.26.3
 	k8s.io/apimachinery v0.26.3
