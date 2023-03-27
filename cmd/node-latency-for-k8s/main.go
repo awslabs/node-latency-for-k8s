@@ -186,7 +186,7 @@ func MustParseFlags(f *flag.FlagSet) Options {
 	f.StringVar(&options.IMDSEndpoint, "imds-endpoint", strEnv("IMDS_ENDPOINT", "http://169.254.169.254"), "IMDS endpoint for testing, default: http://169.254.169.254")
 	f.BoolVar(&options.NoIMDS, "no-imds", boolEnv("NO_IMDS", false), "Do not use EC2 Instance Metadata Service (IMDS), default: false")
 	f.StringVar(&options.PodNamespace, "pod-namespace", strEnv("POD_NAMESPACE", "default"), "namespace of the pods that will be measured from creation to running, default: default")
-	f.StringVar(&options.NodeName, "node-name", strEnv("NODE_NAME", ""), "ndoe name to query for the first pod creation time in the pod namespace, default: <auto-discovered via IMDS>")
+	f.StringVar(&options.NodeName, "node-name", strEnv("NODE_NAME", ""), "node name to query for the first pod creation time in the pod namespace, default: <auto-discovered via IMDS>")
 	f.StringVar(&options.Output, "output", strEnv("OUTPUT", "markdown"), "output type (markdown or json), default: markdown")
 	f.BoolVar(&options.NoComments, "no-comments", boolEnv("NO_COMMENTS", false), "Hide the comments column in the markdown chart output, default: false")
 	f.BoolVar(&options.Version, "version", false, "version information")
