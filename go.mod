@@ -5,7 +5,7 @@ go 1.19
 require (
 	github.com/aws/aws-sdk-go-v2 v1.17.7
 	github.com/aws/aws-sdk-go-v2/config v1.18.16
-	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.12.24
+	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.13.1
 	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.25.4
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.91.0
 	github.com/olekukonko/tablewriter v0.0.5
