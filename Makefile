@@ -1,11 +1,10 @@
 SHELL=bash
 MAKEFILE_PATH = $(dir $(realpath -s $(firstword $(MAKEFILE_LIST))))
 BUILD_DIR_PATH = ${MAKEFILE_PATH}/build
-GOOS ?= linux
-GOARCH ?= amd64
 NLK_KO_DOCKER_REPO ?= ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
 KO_DOCKER_REPO = ${NLK_KO_DOCKER_REPO}
-WITH_GOFLAGS = KO_DOCKER_REPO=${KO_DOCKER_REPO} GOOS=${GOOS} GOARCH=${GOARCH}
+WITH_GOFLAGS = KO_DOCKER_REPO=${KO_DOCKER_REPO}
+TARGET_PLATFORMS=linux/amd64,linux/arm64
 K8S_NODE_LATENCY_IAM_ROLE_ARN ?= arn:aws:iam::${AWS_ACCOUNT_ID}:role/${CLUSTER_NAME}-node-latency-for-k8s
 VERSION ?= $(shell git describe --tags --always --dirty)
 PREV_VERSION ?= $(shell git describe --abbrev=0 --tags `git rev-list --tags --skip=1 --max-count=1`)
@@ -16,7 +15,7 @@ toolchain: ## Install toolchain for development
 	hack/toolchain.sh
 
 build: ## Build the controller image
-	$(eval CONTROLLER_IMG=$(shell $(WITH_GOFLAGS) ko build -B -t $(VERSION) github.com/awslabs/node-latency-for-k8s/cmd/node-latency-for-k8s))
+	$(eval CONTROLLER_IMG=$(shell $(WITH_GOFLAGS) ko build -B --platform=$(TARGET_PLATFORMS) -t $(VERSION) github.com/awslabs/node-latency-for-k8s/cmd/node-latency-for-k8s))
 	$(eval CONTROLLER_TAG=$(shell echo ${CONTROLLER_IMG} | sed 's/.*node-latency-for-k8s://' | cut -d'@' -f1))
 	$(eval CONTROLLER_DIGEST=$(shell echo ${CONTROLLER_IMG} | sed 's/.*node-latency-for-k8s:.*@//'))
 	echo Built ${CONTROLLER_IMG}
