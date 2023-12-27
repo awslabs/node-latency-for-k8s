@@ -28,6 +28,10 @@ Usage for node-latency-for-k8s:
       Do not use EC2 Instance Metadata Service (IMDS), default: false
    --node-name
       node name to query for the first pod creation time in the pod namespace, default: <auto-discovered via IMDS>
+   --otel-endpoint
+      OTeL backend endpoint for receiving metrics, default: <auto-discovered via kubernetes Downward API>
+   --otel-metrics
+      Collect metrics and emit once to OTeL listener
    --output
       output type (markdown or json), default: markdown
    --pod-namespace
@@ -221,6 +225,45 @@ vpc_cni_init_start{amiID="ami-0bf8f0f9cd3cce116",availabilityZone="us-east-2c",e
 # TYPE vpc_cni_plugin_initialized gauge
 vpc_cni_plugin_initialized{amiID="ami-0bf8f0f9cd3cce116",availabilityZone="us-east-2c",experiment="none",instanceType="c6a.large",region="us-east-2"} 24.743959121
 ```
+
+### Example 3 - OTeL
+
+```
+> node-latency --otel-metrics
+### i-0681ec41ddb32ba4e (192.168.23.248) | c6a.large | x86_64 | us-east-2b | ami-0bf8f0f9cd3cce116
+|           EVENT            |      TIMESTAMP       |  T  | COMMENT |
+|----------------------------|----------------------|-----|---------|
+| Pod Created                | 2022-12-30T15:26:15Z | 0s  |         |
+| Fleet Requested            | 2022-12-30T15:26:17Z | 2s  |         |
+| Instance Pending           | 2022-12-30T15:26:19Z | 4s  |         |
+| VM Initialized             | 2022-12-30T15:26:29Z | 14s |         |
+| Network Start              | 2022-12-30T15:26:32Z | 17s |         |
+| Network Ready              | 2022-12-30T15:26:32Z | 17s |         |
+| Containerd Start           | 2022-12-30T15:26:33Z | 18s |         |
+| Containerd Initialized     | 2022-12-30T15:26:33Z | 18s |         |
+| Cloud-Init Initial Start   | 2022-12-30T15:26:33Z | 18s |         |
+| Cloud-Init Config Start    | 2022-12-30T15:26:34Z | 19s |         |
+| Cloud-Init Final Start     | 2022-12-30T15:26:35Z | 20s |         |
+| Cloud-Init Final Finish    | 2022-12-30T15:26:36Z | 21s |         |
+| Kubelet Start              | 2022-12-30T15:26:36Z | 21s |         |
+| Kubelet Registered         | 2022-12-30T15:26:37Z | 22s |         |
+| Kubelet Initialized        | 2022-12-30T15:26:37Z | 22s |         |
+| Kube-Proxy Start           | 2022-12-30T15:26:39Z | 24s |         |
+| VPC CNI Init Start         | 2022-12-30T15:26:39Z | 24s |         |
+| AWS Node Start             | 2022-12-30T15:26:39Z | 24s |         |
+| Node Ready                 | 2022-12-30T15:26:41Z | 26s |         |
+| VPC CNI Plugin Initialized | 2022-12-30T15:26:41Z | 26s |         |
+| Pod Ready                  | 2022-12-30T15:26:43Z | 28s |         |
+2023/12/13 19:13:30 emitting OTeL metrics to backend - http://<COLLECTOR_IP>:4318
+```
+
+### OTeL Setup
+
+Kubernetes Setup
+
+- To emit OTeL metrics, set `OTEL_METRICS` environment variable to `true` in the `values.yaml`. In this mode OTeL metrics will be emitted once, the node will be labeled so that the pod no longer runs on the node and the program will exit. 
+- If running an OTeL collector daemonset then set `oTeLCollectorDaemonset` to `true` in `values.yaml` and the `OTEL_EXPORTER_OTLP_ENDPOINT` will be set to the node ip. otherwise you will explicitly need to set the variable in the `env` field in the `values.yaml` file
+
 
 ## Extensibility
 

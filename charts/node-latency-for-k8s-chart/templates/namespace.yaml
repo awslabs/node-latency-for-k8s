@@ -1,0 +1,7 @@
+{{- if and .Release.Namespace (ne .Release.Namespace "default") }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Release.Namespace }}
+{{- end }}
+

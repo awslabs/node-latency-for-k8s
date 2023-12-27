@@ -28,6 +28,15 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
+	otelMetric "go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	"go.opentelemetry.io/otel/sdk/resource"
+	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
@@ -82,12 +91,22 @@ type ChartOptions struct {
 	HiddenColumns []string
 }
 
+type OTeL struct {
+	Reader        *metric.ManualReader
+	MeterProvider *metric.MeterProvider
+	Exporter      metric.Exporter
+	Context       context.Context
+	OneShot       bool
+	OTeLEndpoint  string
+}
+
 // Chart column label consts
 const (
 	ChartColumnEvent     = "Event"
 	ChartColumnTimestamp = "Timestamp"
 	ChartColumnT         = "T"
 	ChartColumnComment   = "Comment"
+	ServiceName          = "node-latency-for-k8s"
 )
 
 // Default Event regular expressions
@@ -378,6 +397,117 @@ func (m *Measurement) RegisterMetrics(register prometheus.Registerer, experiment
 		}
 		collector.With(dimensions).Set(timing.T.Seconds())
 	}
+}
+
+func newResource(version string) (*resource.Resource, error) {
+	return resource.Merge(resource.Default(),
+		resource.NewWithAttributes(semconv.SchemaURL,
+			semconv.ServiceName(ServiceName),
+			semconv.ServiceVersion(version),
+		))
+}
+
+func newMeterProvider(res *resource.Resource, reader *metric.ManualReader) *metric.MeterProvider {
+	return metric.NewMeterProvider(
+		metric.WithResource(res),
+		metric.WithReader(reader),
+	)
+
+}
+
+func (o *OTeL) SendMetrics() error {
+	defer func() {
+		if err := o.MeterProvider.Shutdown(o.Context); err != nil {
+			log.Println(err)
+		}
+	}()
+
+	collectedMetrics := &metricdata.ResourceMetrics{}
+	if err := o.Reader.Collect(o.Context, collectedMetrics); err != nil {
+		return err
+	}
+
+	if err := o.Exporter.Export(o.Context, collectedMetrics); err != nil {
+		return err
+	}
+
+	log.Printf("Emitting OTeL metrics to backend - %s", o.OTeLEndpoint)
+
+	return nil
+}
+
+func (m *Measurement) createOTeLAttributes(experimentDimension string) []attribute.KeyValue {
+	attributes := []attribute.KeyValue{}
+	for k, v := range m.metricDimensions(experimentDimension) {
+		attributes = append(attributes, attribute.String(k, v))
+	}
+
+	// adding the instance_pending timestamp as a reference which is useful in contious run mode to filter or group nodes
+	var instancePendingTimestamp string
+	for _, timing := range lo.UniqBy(m.Timings, func(t *sources.Timing) string { return t.Event.Metric }) {
+		if timing.Event.Metric == "instance_pending" {
+			instancePendingTimestamp = timing.Timestamp.String()
+			attributes = append(attributes, attribute.String("instance_pending_timestamp", instancePendingTimestamp))
+			break
+		}
+
+	}
+
+	return attributes
+}
+
+// RegisterOTeLMetrics registers OTeL metrics based on a measurement that will be emitted once or continuously
+func (m *Measurement) RegisterOTeLMetrics(ctx context.Context, experimentDimension, version, endpoint string) (*OTeL, error) {
+	oTel := &OTeL{}
+
+	metricExporter, err := otlpmetrichttp.New(ctx)
+	if err != nil {
+		return oTel, err
+	}
+
+	reader := metric.NewManualReader()
+	if reader == nil {
+		return oTel, errors.New("failed to instantiate OTeL metrics Reader")
+	}
+
+	res, err := newResource(version)
+	if err != nil {
+		return oTel, err
+	}
+
+	meterProvider := newMeterProvider(res, reader)
+
+	otel.SetMeterProvider(meterProvider)
+	mtr := otel.Meter(ServiceName)
+
+	commonAttributes := m.createOTeLAttributes(experimentDimension)
+
+	for _, timing := range lo.UniqBy(m.Timings, func(t *sources.Timing) string { return t.Event.Metric }) {
+		elapsedTime := timing.T.Seconds()
+		metricTimestamp := timing.Timestamp.String()
+
+		attributesWithTimestamp := append([]attribute.KeyValue{}, commonAttributes...)
+		attributesWithTimestamp = append(attributesWithTimestamp, attribute.String("metric_timestamp", metricTimestamp))
+
+		if _, err = mtr.Int64ObservableGauge(timing.Event.Metric,
+			otelMetric.WithUnit("{seconds}"),
+			otelMetric.WithInt64Callback(func(_ context.Context, o otelMetric.Int64Observer) error {
+				o.Observe(int64(elapsedTime), otelMetric.WithAttributes(attributesWithTimestamp...))
+				return nil
+			}),
+		); err != nil {
+			return oTel, err
+		}
+	}
+
+	return &OTeL{
+		Context:       ctx,
+		Reader:        reader,
+		MeterProvider: meterProvider,
+		Exporter:      metricExporter,
+		OTeLEndpoint:  endpoint,
+	}, nil
+
 }
 
 // EmitCloudWatchMetrics posts metric data to CloudWatch based on a Measurement

@@ -35,6 +35,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/samber/lo"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -42,6 +44,8 @@ import (
 
 	"github.com/awslabs/node-latency-for-k8s/pkg/latency"
 )
+
+const oneShotExcludeLabel = "node-latency-for-k8s-exclude-pod"
 
 var (
 	version string
@@ -51,10 +55,12 @@ var (
 type Options struct {
 	CloudWatch          bool
 	Prometheus          bool
+	OTeLMetrics         bool
 	ExperimentDimension string
 	TimeoutSeconds      int
 	RetryDelaySeconds   int
 	MetricsPort         int
+	OTeLEndpoint        string
 	IMDSEndpoint        string
 	Kubeconfig          string
 	PodNamespace        string
@@ -77,6 +83,7 @@ func main() {
 	}
 	ctx := context.Background()
 	var err error
+	var clientset *kubernetes.Clientset
 	latencyClient := latency.New()
 
 	// Setup K8s clientset
@@ -90,7 +97,7 @@ func main() {
 		k8sConfig, err = rest.InClusterConfig()
 	}
 	if err == nil {
-		clientset, err := kubernetes.NewForConfig(k8sConfig)
+		clientset, err = kubernetes.NewForConfig(k8sConfig)
 		if err != nil {
 			log.Fatalf("Unable to create K8s clientset: %s", err)
 		}
@@ -173,18 +180,45 @@ func main() {
 		}
 		lo.Must0(srv.ListenAndServe())
 	}
+
+	// Serve OTeL metrics if flag is enabled
+	if options.OTeLMetrics {
+		oTel, err := measurement.RegisterOTeLMetrics(ctx, options.ExperimentDimension, version, options.OTeLEndpoint)
+		if err != nil {
+			log.Fatalf("error registering OTeL metrics: %s", err)
+		}
+
+		if err := oTel.SendMetrics(); err != nil {
+			log.Fatalf("unable to emit OTeL metrics: %s", err)
+		}
+
+		// label the current node we're running on so it doesn't get scheduled again
+		if options.NodeName != "" {
+			log.Printf("Running in one-shot mode. Patching node: %s\n", options.NodeName)
+			_, err = clientset.CoreV1().Nodes().Patch(context.TODO(), options.NodeName, types.MergePatchType,
+				[]byte(fmt.Sprintf(`{"metadata":{"labels":{"%s":""}}}`, oneShotExcludeLabel)),
+				metav1.PatchOptions{})
+			if err != nil {
+				log.Fatalf("error patching node: %v", err)
+			}
+		}
+
+	}
+
 }
 
 func MustParseFlags(f *flag.FlagSet) Options {
 	options := Options{}
 	f.BoolVar(&options.CloudWatch, "cloudwatch-metrics", boolEnv("CLOUDWATCH_METRICS", false), "Emit metrics to CloudWatch, default: false")
 	f.BoolVar(&options.Prometheus, "prometheus-metrics", boolEnv("PROMETHEUS_METRICS", false), "Expose a Prometheus metrics endpoint (this runs as a daemon), default: false")
+	f.BoolVar(&options.OTeLMetrics, "otel-metrics", boolEnv("OTEL_METRICS", false), "Collect metrics and emit once to OTeL collector")
 	f.IntVar(&options.MetricsPort, "metrics-port", intEnv("METRICS_PORT", 2112), "The port to serve prometheus metrics from, default: 2112")
 	f.StringVar(&options.ExperimentDimension, "experiment-dimension", strEnv("EXPERIMENT_DIMENSION", "none"), "Custom dimension to add to experiment metrics, default: none")
 	f.IntVar(&options.TimeoutSeconds, "timeout", intEnv("TIMEOUT", 600), "Timeout in seconds for how long event timings will try to be retrieved, default: 600")
 	f.IntVar(&options.RetryDelaySeconds, "retry-delay", intEnv("RETRY_DELAY", 5), "Delay in seconds in-between timing retrievals, default: 5")
 	f.StringVar(&options.IMDSEndpoint, "imds-endpoint", strEnv("IMDS_ENDPOINT", "http://169.254.169.254"), "IMDS endpoint for testing, default: http://169.254.169.254")
 	f.BoolVar(&options.NoIMDS, "no-imds", boolEnv("NO_IMDS", false), "Do not use EC2 Instance Metadata Service (IMDS), default: false")
+	f.StringVar(&options.OTeLEndpoint, "otel-endpoint", strEnv("OTEL_EXPORTER_OTLP_ENDPOINT", ""), "OTeL backend endpoint for receiving metrics, default: <auto-discovered via kubernetes Downward API>")
 	f.StringVar(&options.PodNamespace, "pod-namespace", strEnv("POD_NAMESPACE", "default"), "namespace of the pods that will be measured from creation to running, default: default")
 	f.StringVar(&options.NodeName, "node-name", strEnv("NODE_NAME", ""), "node name to query for the first pod creation time in the pod namespace, default: <auto-discovered via IMDS>")
 	f.StringVar(&options.Output, "output", strEnv("OUTPUT", "markdown"), "output type (markdown or json), default: markdown")

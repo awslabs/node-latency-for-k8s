@@ -12,6 +12,13 @@ image:
 nameOverride: ""
 fullnameOverride: ""
 
+# The value of the label is statically defined as a constant named oneShotExcludeLabel in the main.go
+nodeLabelKey: "node-latency-for-k8s-exclude-pod"
+
+# If the OTeL collector is running as a daemonset we'll pull in the node ip for the OTEL_EXPORTER_OTLP_ENDPOINT env variable, otherwise
+# set OTEL_EXPORTER_OTLP_ENDPOINT in the env values array below
+oTeLCollectorDaemonset: true
+
 serviceAccount:
   # Specifies whether a service account should be created
   create: true
@@ -52,6 +59,8 @@ env:
   - name: PROMETHEUS_METRICS
     value: "true"
   - name: CLOUDWATCH_METRICS
+    value: "false"
+  - name: OTEL_METRICS
     value: "false"
   - name: OUTPUT
     value: "markdown"

@@ -11,3 +11,9 @@ rules:
   - pods
   verbs:
   - list
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - patch
