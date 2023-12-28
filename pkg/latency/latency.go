@@ -442,17 +442,6 @@ func (m *Measurement) createOTeLAttributes(experimentDimension string) []attribu
 		attributes = append(attributes, attribute.String(k, v))
 	}
 
-	// adding the instance_pending timestamp as a reference which is useful in contious run mode to filter or group nodes
-	var instancePendingTimestamp string
-	for _, timing := range lo.UniqBy(m.Timings, func(t *sources.Timing) string { return t.Event.Metric }) {
-		if timing.Event.Metric == "instance_pending" {
-			instancePendingTimestamp = timing.Timestamp.String()
-			attributes = append(attributes, attribute.String("instance_pending_timestamp", instancePendingTimestamp))
-			break
-		}
-
-	}
-
 	return attributes
 }
 
