@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: {{ include "node-latency-for-k8s.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "node-latency-for-k8s.labels" . | nindent 4 }}
 spec:
@@ -17,6 +18,13 @@ spec:
       labels:
         {{- include "node-latency-for-k8s.selectorLabels" . | nindent 8 }}
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                - key: {{ .Values.nodeLabelKey }}
+                  operator: DoesNotExist
       serviceAccountName: {{ include "node-latency-for-k8s.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
@@ -35,6 +43,20 @@ spec:
           ports:
             - containerPort: 2112
           env:
+            {{- if .Values.oTeLCollectorDaemonset}}
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: status.hostIP
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://$(HOST_IP):4318
+            {{- else }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "{{ .Values.env.OTEL_EXPORTER_OTLP_ENDPOINT }}"
+            {{- end }}
+            - name: AWS_REGION
+              value: {{ .Values.region }}
             {{- toYaml .Values.env | nindent 12 }}
           volumeMounts:
             - name: logs

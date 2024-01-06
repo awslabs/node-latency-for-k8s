@@ -28,6 +28,15 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
+	otelMetric "go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	"go.opentelemetry.io/otel/sdk/resource"
+	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
@@ -82,12 +91,22 @@ type ChartOptions struct {
 	HiddenColumns []string
 }
 
+type OTeL struct {
+	Reader        *metric.ManualReader
+	MeterProvider *metric.MeterProvider
+	Exporter      metric.Exporter
+	Context       context.Context
+	OneShot       bool
+	OTeLEndpoint  string
+}
+
 // Chart column label consts
 const (
 	ChartColumnEvent     = "Event"
 	ChartColumnTimestamp = "Timestamp"
 	ChartColumnT         = "T"
 	ChartColumnComment   = "Comment"
+	ServiceName          = "node-latency-for-k8s"
 )
 
 // Default Event regular expressions
@@ -380,6 +399,106 @@ func (m *Measurement) RegisterMetrics(register prometheus.Registerer, experiment
 	}
 }
 
+func newResource(version string) (*resource.Resource, error) {
+	return resource.Merge(resource.Default(),
+		resource.NewWithAttributes(semconv.SchemaURL,
+			semconv.ServiceName(ServiceName),
+			semconv.ServiceVersion(version),
+		))
+}
+
+func newMeterProvider(res *resource.Resource, reader *metric.ManualReader) *metric.MeterProvider {
+	return metric.NewMeterProvider(
+		metric.WithResource(res),
+		metric.WithReader(reader),
+	)
+
+}
+
+func (o *OTeL) SendMetrics() error {
+	defer func() {
+		if err := o.MeterProvider.Shutdown(o.Context); err != nil {
+			log.Println(err)
+		}
+	}()
+
+	collectedMetrics := &metricdata.ResourceMetrics{}
+	if err := o.Reader.Collect(o.Context, collectedMetrics); err != nil {
+		return err
+	}
+
+	if err := o.Exporter.Export(o.Context, collectedMetrics); err != nil {
+		return err
+	}
+
+	log.Printf("Emitting OTeL metrics to backend - %s", o.OTeLEndpoint)
+
+	return nil
+}
+
+func (m *Measurement) createOTeLAttributes(experimentDimension string) []attribute.KeyValue {
+	attributes := []attribute.KeyValue{}
+	for k, v := range m.metricDimensions(experimentDimension) {
+		attributes = append(attributes, attribute.String(k, v))
+	}
+
+	return attributes
+}
+
+// RegisterOTeLMetrics registers OTeL metrics based on a measurement that will be emitted once or continuously
+func (m *Measurement) RegisterOTeLMetrics(ctx context.Context, experimentDimension, version, endpoint string) (*OTeL, error) {
+	oTel := &OTeL{}
+
+	metricExporter, err := otlpmetrichttp.New(ctx)
+	if err != nil {
+		return oTel, err
+	}
+
+	reader := metric.NewManualReader()
+	if reader == nil {
+		return oTel, errors.New("failed to instantiate OTeL metrics Reader")
+	}
+
+	res, err := newResource(version)
+	if err != nil {
+		return oTel, err
+	}
+
+	meterProvider := newMeterProvider(res, reader)
+
+	otel.SetMeterProvider(meterProvider)
+	mtr := otel.Meter(ServiceName)
+
+	commonAttributes := m.createOTeLAttributes(experimentDimension)
+
+	for _, timing := range lo.UniqBy(m.Timings, func(t *sources.Timing) string { return t.Event.Metric }) {
+		elapsedTime := timing.T.Seconds()
+		metricTimestamp := timing.Timestamp.String()
+
+		attributesWithTimestamp := append([]attribute.KeyValue{}, commonAttributes...)
+		attributesWithTimestamp = append(attributesWithTimestamp, attribute.String("metric_timestamp", metricTimestamp))
+
+		if _, err = mtr.Int64ObservableGauge(timing.Event.Metric,
+			otelMetric.WithUnit("{seconds}"),
+			otelMetric.WithInt64Callback(func(_ context.Context, o otelMetric.Int64Observer) error {
+				o.Observe(int64(elapsedTime), otelMetric.WithAttributes(attributesWithTimestamp...))
+				return nil
+			}),
+		); err != nil {
+			return oTel, err
+		}
+	}
+
+	return &OTeL{
+		Context:       ctx,
+		Reader:        reader,
+		MeterProvider: meterProvider,
+		Exporter:      metricExporter,
+		OTeLEndpoint:  endpoint,
+	}, nil
+
+}
+
 // EmitCloudWatchMetrics posts metric data to CloudWatch based on a Measurement
 func (m *Measurement) EmitCloudWatchMetrics(ctx context.Context, cw *cloudwatch.Client, experimentDimension string) error {
 	var errs error
@@ -425,13 +544,8 @@ func (m *Measurement) metricDimensions(experimentDimension string) map[string]st
 
 // RegisterDefaultSources registers the default sources to the Measurer
 func (m *Measurer) RegisterDefaultSources() *Measurer {
-	m.RegisterSources([]sources.Source{
-		messages.New(messages.DefaultPath),
-		awsnode.New(awsnode.DefaultPath),
-	}...)
-	if m.imdsClient != nil {
-		m.RegisterSources(imdssrc.New(m.imdsClient))
-	}
+	var year int
+
 	if m.ec2Client != nil {
 		instanceID := ""
 		if m.imdsClient != nil {
@@ -442,7 +556,25 @@ func (m *Measurer) RegisterDefaultSources() *Measurer {
 				instanceID = md.InstanceID
 			}
 		}
+
+		// describe instance in order to get the year instance was launched
+		output, err := m.ec2Client.DescribeInstances(context.TODO(),
+			&ec2.DescribeInstancesInput{
+				InstanceIds: []string{instanceID},
+			})
+		if err != nil || (len(output.Reservations) == 0 || len(output.Reservations[0].Instances) == 0) {
+			fmt.Println("Error describing instance:", err)
+		}
+
+		// Access the LaunchTime of the first instance in the reservation
+		launchTime := output.Reservations[0].Instances[0].LaunchTime
+
+		// Print the year of the launch time
+		year = launchTime.Year()
 		m.RegisterSources(ec2src.New(m.ec2Client, instanceID, m.nodeName))
+	}
+	if m.imdsClient != nil {
+		m.RegisterSources(imdssrc.New(m.imdsClient))
 	}
 	if m.k8sClientset != nil && m.podNamespace != "" {
 		if m.nodeName == "" && m.imdsClient != nil {
@@ -460,6 +592,10 @@ func (m *Measurer) RegisterDefaultSources() *Measurer {
 			m.RegisterSources(k8ssrc.New(m.k8sClientset, m.nodeName, m.podNamespace))
 		}
 	}
+	m.RegisterSources([]sources.Source{
+		messages.New(messages.DefaultPath, year),
+		awsnode.New(awsnode.DefaultPath, year),
+	}...)
 	return m
 }
 

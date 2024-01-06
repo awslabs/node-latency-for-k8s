@@ -35,13 +35,14 @@ type Source struct {
 }
 
 // New instantiates a new instance of the AWSNode source
-func New(path string) *Source {
+func New(path string, year int) *Source {
 	return &Source{
 		logReader: &sources.LogReader{
-			Path:            path,
-			Glob:            true,
-			TimestampRegex:  TimestampFormat,
-			TimestampLayout: TimestampLayout,
+			Path:                 path,
+			Glob:                 true,
+			TimestampRegex:       TimestampFormat,
+			TimestampLayout:      TimestampLayout,
+			YearInstanceLaunched: year,
 		},
 	}
 }
