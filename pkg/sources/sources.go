@@ -111,11 +111,12 @@ func CommentMatchedLine() func(matchedLine string) string {
 // LogReader is a base Source helper that can Read file contents, cache, and support Glob file paths
 // Other Sources can be built on-top of the LogSrc
 type LogReader struct {
-	Path            string
-	Glob            bool
-	TimestampRegex  *regexp.Regexp
-	TimestampLayout string
-	file            []byte
+	Path                 string
+	Glob                 bool
+	TimestampRegex       *regexp.Regexp
+	TimestampLayout      string
+	file                 []byte
+	YearInstanceLaunched int
 }
 
 // ClearCache cleas the cached log
@@ -215,12 +216,13 @@ func (l *LogReader) ParseTimestamp(line string) (time.Time, error) {
 
 	suffix := ""
 	// Convert timestamp to a time.Time type
-	if !strings.Contains(rawTS, fmt.Sprint(time.Now().Year())) {
-		suffix = fmt.Sprintf(" %d", time.Now().Year())
+	if !strings.Contains(rawTS, fmt.Sprint(l.YearInstanceLaunched)) {
+		suffix = fmt.Sprintf(" %d", l.YearInstanceLaunched)
 	}
 	ts, err := time.Parse(l.TimestampLayout, fmt.Sprintf("%s%s", rawTS, suffix))
 	if err != nil {
 		return time.Time{}, err
 	}
 	return ts, nil
+
 }

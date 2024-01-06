@@ -54,7 +54,9 @@ spec:
             {{- else }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "{{ .Values.env.OTEL_EXPORTER_OTLP_ENDPOINT }}"
-            {{- end }} 
+            {{- end }}
+            - name: AWS_REGION
+              value: {{ .Values.region }}
             {{- toYaml .Values.env | nindent 12 }}
           volumeMounts:
             - name: logs
