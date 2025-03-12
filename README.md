@@ -44,6 +44,12 @@ Usage for node-latency-for-k8s:
 
 ## Installation
 
+### Prerequisites
+
+- NLK currently only supports Amazon Linux 2 (AL2).
+- NLK requires IMDS access. To avoid using `HttpPutResponseHopLimit: 2` the DaemonSet now runs with `hostNetwork: true` by default which just requires `HttpPutResponseHopLimit: 1` and aligns with [EKS’ Best Practices](https://docs.aws.amazon.com/eks/latest/best-practices/identity-and-access-management.html).
+- *02-create-service-account.sh* utilizes [eksctl](https://github.com/eksctl-io/eksctl). Please make sure to install a recent version.
+
 ### K8s DaemonSet (Helm)
 
 ```
@@ -56,9 +62,9 @@ curl -Lo ${TEMP_DIR}/01-create-iam-policy.sh ${SCRIPTS_PATH}/01-create-iam-polic
 curl -Lo ${TEMP_DIR}/02-create-service-account.sh ${SCRIPTS_PATH}/02-create-service-account.sh
 curl -Lo ${TEMP_DIR}/cloudformation.yaml ${SCRIPTS_PATH}/cloudformation.yaml
 chmod +x ${TEMP_DIR}/01-create-iam-policy.sh ${TEMP_DIR}/02-create-service-account.sh
+export AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 ${TEMP_DIR}/01-create-iam-policy.sh && ${TEMP_DIR}/02-create-service-account.sh
 
-export AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 export KNL_IAM_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/${CLUSTER_NAME}-node-latency-for-k8s"
 
 docker logout public.ecr.aws
