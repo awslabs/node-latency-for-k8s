@@ -110,7 +110,7 @@ var (
 	vpcCNIInitialized     = regexp.MustCompile(`.*Successfully copied CNI plugin binary and config file.*`)
 	nodeReady             = regexp.MustCompile(`.*event="NodeReady".*`)
 	throttled             = regexp.MustCompile(`.*Waited for .* due to client-side throttling, not priority and fairness, request: .*`)
-	podReadyStr           = `.*%s/.* Type:ContainerStarted.*`
+	podReadyStr           = `.*%s/.*"Type":"ContainerStarted".*`
 )
 
 // New creates a new instance of a Measurer
