@@ -59,7 +59,7 @@ func (i Source) Name() string {
 
 // FindByPath is a helper func that returns a FindFunc to query IMDS for a specific HTTP path that can be used in an Event
 func (i Source) FindByPath(path string) sources.FindFunc {
-	return func(s sources.Source, log []byte) ([]string, error) {
+	return func(_ sources.Source, _ []byte) ([]string, error) {
 		result, err := i.GetMetadata(path)
 		return []string{result}, err
 	}
