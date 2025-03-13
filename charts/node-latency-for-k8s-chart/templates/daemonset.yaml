@@ -45,6 +45,7 @@ spec:
           hostPath:
             path: /var/log
             type: Directory
+      hostNetwork: true
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
