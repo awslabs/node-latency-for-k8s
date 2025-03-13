@@ -16,7 +16,6 @@ linters:
     - asciicheck
     - bidichk
     - errorlint
-    - exportloopref
     - gosec
     - revive
     - stylecheck

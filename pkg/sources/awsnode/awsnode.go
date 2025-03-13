@@ -63,7 +63,7 @@ func (a Source) Name() string {
 
 // FindByRegex is a helper func that returns a FindFunc to search for a regex in a log source that can be used in an Event
 func (a Source) FindByRegex(re *regexp.Regexp) sources.FindFunc {
-	return func(s sources.Source, log []byte) ([]string, error) {
+	return func(_ sources.Source, _ []byte) ([]string, error) {
 		return a.logReader.Find(re)
 	}
 }
