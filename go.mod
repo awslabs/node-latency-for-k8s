@@ -2,14 +2,14 @@ module github.com/awslabs/node-latency-for-k8s
 
 go 1.23.0
 
-toolchain go1.23.6
+toolchain go1.24.1
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.36.3
 	github.com/aws/aws-sdk-go-v2/config v1.29.9
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.30
 	github.com/aws/aws-sdk-go-v2/service/cloudwatch v1.44.1
-	github.com/aws/aws-sdk-go-v2/service/ec2 v1.209.0
+	github.com/aws/aws-sdk-go-v2/service/ec2 v1.211.0
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/prometheus/client_golang v1.21.1
 	github.com/samber/lo v1.49.1
